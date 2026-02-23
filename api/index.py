@@ -122,11 +122,14 @@ async def gemini_match(descripcion: str, candidatos: list[str]) -> Optional[dict
 @app.post("/api/cargar_cnis")
 async def cargar_cnis(file: UploadFile = File(...)):
     """Recibe Excel del CNIS e inserta masivamente en cnis_catalogo."""
-    if not file.filename.endswith((".xlsx", ".xls")):
-        raise HTTPException(400, "Solo se aceptan archivos .xlsx o .xls")
+    if not file.filename.endswith((".xlsx", ".xls", ".csv")):
+        raise HTTPException(400, "Solo se aceptan archivos .xlsx, .xls o .csv")
 
     contents = await file.read()
-    df = pd.read_excel(io.BytesIO(contents))
+    if file.filename.endswith(".csv"):
+        df = pd.read_csv(io.BytesIO(contents))
+    else:
+        df = pd.read_excel(io.BytesIO(contents))
 
     # Normalize column names
     df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
@@ -210,11 +213,14 @@ async def cargar_cnis(file: UploadFile = File(...)):
 @app.post("/api/procesar_catalogo")
 async def procesar_catalogo(file: UploadFile = File(...)):
     """Recibe Excel local. Limpia, hace fuzzy match contra CNIS."""
-    if not file.filename.endswith((".xlsx", ".xls")):
-        raise HTTPException(400, "Solo se aceptan archivos .xlsx o .xls")
+    if not file.filename.endswith((".xlsx", ".xls", ".csv")):
+        raise HTTPException(400, "Solo se aceptan archivos .xlsx, .xls o .csv")
 
     contents = await file.read()
-    df = pd.read_excel(io.BytesIO(contents))
+    if file.filename.endswith(".csv"):
+        df = pd.read_csv(io.BytesIO(contents))
+    else:
+        df = pd.read_excel(io.BytesIO(contents))
     df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
 
     # Detect columns
