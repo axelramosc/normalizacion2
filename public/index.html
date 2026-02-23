@@ -763,6 +763,40 @@
       display: flex;
     }
 
+    .btn-danger {
+      background: var(--red-dim);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: var(--red);
+    }
+
+    .btn-danger:hover {
+      background: rgba(239, 68, 68, 0.25);
+      border-color: var(--red);
+      transform: translateY(-1px);
+    }
+
+    .file-info .btn-delete-file {
+      margin-left: auto;
+      padding: 4px 12px;
+      font-size: 12px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-family: 'Manrope', sans-serif;
+      font-weight: 600;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      background: var(--red-dim);
+      color: var(--red);
+      transition: var(--transition);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .file-info .btn-delete-file:hover {
+      background: rgba(239, 68, 68, 0.25);
+      border-color: var(--red);
+    }
+
     /* Responsive */
     @media (max-width: 900px) {
       .sidebar {
@@ -839,6 +873,7 @@
           <div class="file-info" id="cnis-file-info">
             <span>📄</span>
             <span id="cnis-file-name"></span>
+            <button class="btn-delete-file" onclick="clearCNISFile()" title="Eliminar archivo">🗑️ Eliminar</button>
           </div>
           <div class="progress-bar" id="cnis-progress" style="display:none">
             <div class="progress-fill" id="cnis-progress-fill"></div>
@@ -879,6 +914,7 @@
           <div class="file-info" id="local-file-info">
             <span>📄</span>
             <span id="local-file-name"></span>
+            <button class="btn-delete-file" onclick="clearLocalFile()" title="Eliminar archivo">🗑️ Eliminar</button>
           </div>
           <div class="progress-bar" id="local-progress" style="display:none">
             <div class="progress-fill" id="local-progress-fill"></div>
@@ -1111,6 +1147,16 @@
       setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; }, 2000);
     }
 
+    function clearCNISFile() {
+      cnisFile = null;
+      cnisInput.value = '';
+      document.getElementById('cnis-file-info').classList.remove('visible');
+      document.getElementById('cnis-file-name').textContent = '';
+      document.getElementById('cnis-progress').style.display = 'none';
+      document.getElementById('cnis-progress-fill').style.width = '0%';
+      showToast('🗑️ Archivo CNIS eliminado', 'success');
+    }
+
     // ---- Local Upload ----
     const localZone = document.getElementById('local-upload-zone');
     const localInput = document.getElementById('local-file-input');
@@ -1134,6 +1180,17 @@
         document.getElementById('btn-procesar').disabled = false;
       }
     });
+
+    function clearLocalFile() {
+      localFile = null;
+      localInput.value = '';
+      document.getElementById('local-file-info').classList.remove('visible');
+      document.getElementById('local-file-name').textContent = '';
+      document.getElementById('local-progress').style.display = 'none';
+      document.getElementById('local-progress-fill').style.width = '0%';
+      document.getElementById('btn-procesar').disabled = true;
+      showToast('🗑️ Archivo local eliminado', 'success');
+    }
 
     async function procesarLocal() {
       if (!localFile) return;
