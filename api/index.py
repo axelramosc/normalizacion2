@@ -1,6 +1,7 @@
 """
 MedNorm — API de Normalización de Medicamentos
 FastAPI backend for Vercel Serverless
+Architecture: Supabase Storage + Batch Processing
 """
 
 import os
@@ -10,25 +11,26 @@ import logging
 from typing import Optional
 
 import pandas as pd
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Form
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client, Client
 from thefuzz import fuzz, process
 
 # ---------------------------------------------------------------------------
-# Config
+# Config — sanitize env vars aggressively (remove ALL non-printable chars)
 # ---------------------------------------------------------------------------
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://abaazvcjwzvmwkgrtwee.supabase.co").strip()
-SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
-GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "").strip()
+_CLEAN_ENV = re.compile(r'[^\x20-\x7E]')  # keep only printable ASCII
+SUPABASE_URL = _CLEAN_ENV.sub('', os.environ.get("SUPABASE_URL", "https://abaazvcjwzvmwkgrtwee.supabase.co"))
+SUPABASE_KEY = _CLEAN_ENV.sub('', os.environ.get("SUPABASE_SERVICE_KEY", ""))
+GOOGLE_API_KEY = _CLEAN_ENV.sub('', os.environ.get("GOOGLE_API_KEY", ""))
 
 SCORE_THRESHOLD = 85  # >= 85 → mapeado_seguro, < 85 → revision_manual
-BATCH_SIZE = 2500      # Insert batch size for Vercel timeout safety
+STORAGE_BUCKET = "catalogos"
 
 app = FastAPI(
     title="MedNorm API",
     description="Normalización de catálogos de medicamentos con CNIS",
-    version="2.0.0",
+    version="3.0.0",
 )
 
 app.add_middleware(
@@ -74,23 +76,44 @@ def limpiar_descripcion(texto: str) -> str:
         return ""
     t = str(texto).lower().strip()
     t = _RE_CLEAN.sub(" ", t)
-    # Normalizar unidades
     for original, reemplazo in _UNIT_MAP.items():
         t = re.sub(rf"\b{original}\b", reemplazo, t)
     t = _RE_SPACES.sub(" ", t).strip()
     return t
 
 
+def read_file_from_bytes(contents: bytes, filename: str) -> pd.DataFrame:
+    """Read CSV or Excel from bytes with encoding fallback."""
+    if filename.endswith(".csv"):
+        try:
+            return pd.read_csv(io.BytesIO(contents), encoding="utf-8-sig")
+        except UnicodeDecodeError:
+            return pd.read_csv(io.BytesIO(contents), encoding="latin-1")
+    else:
+        return pd.read_excel(io.BytesIO(contents))
+
+
+def clean_nan(records: list[dict]) -> list[dict]:
+    """Replace NaN/float values with None for JSON serialization."""
+    for rec in records:
+        for k, v in list(rec.items()):
+            try:
+                if v is None or pd.isna(v):
+                    rec[k] = None
+            except (TypeError, ValueError):
+                pass
+    return records
+
+
 # ---------------------------------------------------------------------------
 # Gemini fallback (optional)
 # ---------------------------------------------------------------------------
 async def gemini_match(descripcion: str, candidatos: list[str]) -> Optional[dict]:
-    """Uses Google Gemini as fallback for fuzzy matching when thefuzz score is low."""
+    """Uses Google Gemini as fallback for fuzzy matching."""
     if not GOOGLE_API_KEY:
         return None
     try:
         from google import genai
-
         client = genai.Client(api_key=GOOGLE_API_KEY)
         candidatos_text = "\n".join(f"  {i+1}. {c}" for i, c in enumerate(candidatos[:20]))
         prompt = (
@@ -101,10 +124,7 @@ async def gemini_match(descripcion: str, candidatos: list[str]) -> Optional[dict
             f"Responde SOLO con el número del candidato correcto (1-{min(len(candidatos), 20)}), "
             f"o '0' si ninguno coincide. Solo el número."
         )
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-        )
+        response = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
         answer = response.text.strip()
         match = re.search(r"\d+", answer)
         if match:
@@ -117,53 +137,123 @@ async def gemini_match(descripcion: str, candidatos: list[str]) -> Optional[dict
 
 
 # ---------------------------------------------------------------------------
-# POST /api/cargar_cnis
+# POST /api/upload_file — Upload CSV/Excel to Supabase Storage
 # ---------------------------------------------------------------------------
-@app.post("/api/cargar_cnis")
-async def cargar_cnis(file: UploadFile = File(...)):
-    """Recibe Excel del CNIS e inserta masivamente en cnis_catalogo."""
+@app.post("/api/upload_file")
+async def upload_file(
+    file: UploadFile = File(...),
+    type: str = Form("cnis"),  # "cnis" or "local"
+):
+    """Upload file to Supabase Storage and return metadata."""
     if not file.filename.endswith((".xlsx", ".xls", ".csv")):
         raise HTTPException(400, "Solo se aceptan archivos .xlsx, .xls o .csv")
 
     contents = await file.read()
-    try:
-        if file.filename.endswith(".csv"):
-            try:
-                df = pd.read_csv(io.BytesIO(contents), encoding="utf-8")
-            except UnicodeDecodeError:
-                df = pd.read_csv(io.BytesIO(contents), encoding="latin-1")
-        else:
-            df = pd.read_excel(io.BytesIO(contents))
-    except Exception as e:
-        raise HTTPException(400, f"Error al procesar el archivo: {str(e)}")
 
-    # Normalize column names
+    # Parse to count rows and detect columns
+    try:
+        df = read_file_from_bytes(contents, file.filename)
+    except Exception as e:
+        raise HTTPException(400, f"Error al leer el archivo: {str(e)}")
+
+    total_rows = len(df)
+    columns = list(df.columns)
+
+    # Upload to Supabase Storage
+    sb = get_sb()
+    file_path = f"{type}/{file.filename}"
+
+    try:
+        # Remove existing file if any
+        try:
+            sb.storage.from_(STORAGE_BUCKET).remove([file_path])
+        except Exception:
+            pass
+        # Upload new file
+        sb.storage.from_(STORAGE_BUCKET).upload(
+            file_path,
+            contents,
+            {"content-type": "application/octet-stream"},
+        )
+    except Exception as e:
+        raise HTTPException(500, f"Error al subir archivo a Storage: {str(e)}")
+
+    return {
+        "status": "ok",
+        "file_path": file_path,
+        "total_rows": total_rows,
+        "columns": columns,
+        "filename": file.filename,
+    }
+
+
+# ---------------------------------------------------------------------------
+# POST /api/procesar_lote — Process a batch of rows from Storage
+# ---------------------------------------------------------------------------
+@app.post("/api/procesar_lote")
+async def procesar_lote(
+    file_path: str = Form(...),
+    type: str = Form("cnis"),     # "cnis" or "local"
+    offset: int = Form(0),
+    batch_size: int = Form(50),
+    clear_data: bool = Form(False),  # True on first call to clear old data
+):
+    """Download file from Storage, process rows [offset:offset+batch_size], insert into DB."""
+    sb = get_sb()
+
+    # Download file from Storage
+    try:
+        file_bytes = sb.storage.from_(STORAGE_BUCKET).download(file_path)
+    except Exception as e:
+        raise HTTPException(400, f"Error al descargar archivo de Storage: {str(e)}")
+
+    # Determine filename from path
+    filename = file_path.split("/")[-1]
+
+    try:
+        df = read_file_from_bytes(file_bytes, filename)
+    except Exception as e:
+        raise HTTPException(400, f"Error al procesar archivo: {str(e)}")
+
+    total_rows = len(df)
+
+    if type == "cnis":
+        return await _process_cnis_batch(sb, df, offset, batch_size, total_rows, clear_data)
+    elif type == "local":
+        return await _process_local_batch(sb, df, offset, batch_size, total_rows, clear_data)
+    else:
+        raise HTTPException(400, f"Tipo no válido: {type}. Use 'cnis' o 'local'.")
+
+
+async def _process_cnis_batch(sb, df, offset, batch_size, total_rows, clear_data):
+    """Process a batch of CNIS catalog rows."""
+    # Normalize columns
     df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
 
-    # Map common column name variants
+    # Map column names
     col_map = {}
     for col in df.columns:
         if "clave" in col:
             col_map[col] = "clave_cnis"
-        elif "descripcion" in col or "presentacion" in col or "descrip" in col:
-            if "clave_cnis" not in col_map.values():
-                pass  # skip
-            if "descripcion_cnis_limpia" not in col_map.values():
-                col_map[col] = "descripcion_cnis_limpia"
+        elif ("descripcion" in col or "descrip" in col) and "descripcion_cnis_limpia" not in col_map.values():
+            col_map[col] = "descripcion_cnis_limpia"
         elif "grupo" in col or "terapeutico" in col:
             col_map[col] = "grupo_terapeutico"
         elif "indicacion" in col:
             col_map[col] = "indicaciones"
         elif "contraindicacion" in col:
             col_map[col] = "contraindicaciones"
+        elif "insumo" in col and "descripcion_cnis_limpia" not in col_map.values():
+            col_map[col] = "descripcion_cnis_limpia"
 
     df = df.rename(columns=col_map)
 
-    # Ensure required columns
+    # If we have both 'insumo' and 'descripcion' mapped, combine them
+    # (handled by taking first mapped one)
+
     if "clave_cnis" not in df.columns:
         raise HTTPException(400, f"No se encontró columna 'clave'. Columnas: {list(df.columns)}")
 
-    # Build description from available text columns if not directly mapped
     if "descripcion_cnis_limpia" not in df.columns:
         text_cols = [c for c in df.columns if c not in ("clave_cnis", "grupo_terapeutico", "indicaciones", "contraindicaciones")]
         if text_cols:
@@ -171,71 +261,57 @@ async def cargar_cnis(file: UploadFile = File(...)):
         else:
             raise HTTPException(400, "No se encontró columna de descripción")
 
+    # Deduplicate
+    df = df.drop_duplicates(subset=["clave_cnis"], keep="first")
+    total_unique = len(df)
+
+    # Filter out rows with null clave
+    df = df[df["clave_cnis"].notna() & (df["clave_cnis"].astype(str).str.strip() != "")]
+
+    # Get the batch
+    batch_df = df.iloc[offset:offset + batch_size]
+    if batch_df.empty:
+        return {"status": "complete", "processed": 0, "total": total_unique, "remaining": 0}
+
     # Clean descriptions
-    df["descripcion_cnis_limpia"] = df["descripcion_cnis_limpia"].apply(limpiar_descripcion)
+    batch_df = batch_df.copy()
+    batch_df["descripcion_cnis_limpia"] = batch_df["descripcion_cnis_limpia"].apply(
+        lambda x: str(x).strip() if pd.notna(x) else ""
+    )
 
     # Fill NaN
     for col in ["grupo_terapeutico", "indicaciones", "contraindicaciones"]:
-        if col not in df.columns:
-            df[col] = None
+        if col not in batch_df.columns:
+            batch_df[col] = None
         else:
-            df[col] = df[col].where(df[col].notna(), None)
-
-    # Deduplicate by clave_cnis
-    df = df.drop_duplicates(subset=["clave_cnis"], keep="first")
-
-    # Insert in batches
-    sb = get_sb()
-
-    # Clear existing data
-    sb.table("cnis_catalogo").delete().neq("id_cnis", 0).execute()
+            batch_df[col] = batch_df[col].where(batch_df[col].notna(), None)
 
     target_cols = ["clave_cnis", "descripcion_cnis_limpia", "grupo_terapeutico", "indicaciones", "contraindicaciones"]
-    records = df[[c for c in target_cols if c in df.columns]].to_dict("records")
+    records = batch_df[[c for c in target_cols if c in batch_df.columns]].to_dict("records")
+    records = clean_nan(records)
 
-    # Clean None/NaN values
-    for rec in records:
-        for k, v in list(rec.items()):
-            try:
-                if v is None or pd.isna(v):
-                    rec[k] = None
-            except (TypeError, ValueError):
-                pass  # value is not NaN-checkable, keep as-is
+    # On first batch, clear existing data
+    if clear_data:
+        sb.table("cnis_catalogo").delete().neq("id_cnis", 0).execute()
 
-    inserted = 0
-    for i in range(0, len(records), BATCH_SIZE):
-        batch = records[i : i + BATCH_SIZE]
-        sb.table("cnis_catalogo").upsert(batch, on_conflict="clave_cnis").execute()
-        inserted += len(batch)
+    # Upsert
+    sb.table("cnis_catalogo").upsert(records, on_conflict="clave_cnis").execute()
+
+    processed = offset + len(records)
+    remaining = max(0, total_unique - processed)
 
     return {
-        "status": "ok",
-        "total_registros": len(records),
-        "insertados": inserted,
-        "columnas_detectadas": col_map,
+        "status": "complete" if remaining == 0 else "processing",
+        "processed": processed,
+        "batch_inserted": len(records),
+        "total": total_unique,
+        "remaining": remaining,
     }
 
 
-# ---------------------------------------------------------------------------
-# POST /api/procesar_catalogo
-# ---------------------------------------------------------------------------
-@app.post("/api/procesar_catalogo")
-async def procesar_catalogo(file: UploadFile = File(...)):
-    """Recibe Excel local. Limpia, hace fuzzy match contra CNIS."""
-    if not file.filename.endswith((".xlsx", ".xls", ".csv")):
-        raise HTTPException(400, "Solo se aceptan archivos .xlsx, .xls o .csv")
-
-    contents = await file.read()
-    try:
-        if file.filename.endswith(".csv"):
-            try:
-                df = pd.read_csv(io.BytesIO(contents), encoding="utf-8")
-            except UnicodeDecodeError:
-                df = pd.read_csv(io.BytesIO(contents), encoding="latin-1")
-        else:
-            df = pd.read_excel(io.BytesIO(contents))
-    except Exception as e:
-        raise HTTPException(400, f"Error al procesar el archivo local: {str(e)}")
+async def _process_local_batch(sb, df, offset, batch_size, total_rows, clear_data):
+    """Process a batch of local catalog rows with fuzzy matching."""
+    # Normalize columns
     df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
 
     # Detect columns
@@ -247,7 +323,9 @@ async def procesar_catalogo(file: UploadFile = File(...)):
     if not desc_col:
         raise HTTPException(400, f"No se encontró columna de descripción. Columnas: {list(df.columns)}")
 
-    sb = get_sb()
+    # On first batch, clear existing data and fetch CNIS catalog
+    if clear_data:
+        sb.table("local_catalogo").delete().neq("id_local", 0).execute()
 
     # Fetch CNIS catalog for matching
     cnis_resp = sb.table("cnis_catalogo").select("id_cnis, clave_cnis, descripcion_cnis_limpia").execute()
@@ -258,20 +336,23 @@ async def procesar_catalogo(file: UploadFile = File(...)):
     cnis_lookup = {r["descripcion_cnis_limpia"]: r for r in cnis_data}
     cnis_descriptions = list(cnis_lookup.keys())
 
-    # Clear previous local data
-    sb.table("local_catalogo").delete().neq("id_local", 0).execute()
+    # Get the batch
+    batch_df = df.iloc[offset:offset + batch_size]
+    if batch_df.empty:
+        return {"status": "complete", "processed": 0, "total": total_rows, "remaining": 0}
 
-    results = {"mapeado_seguro": 0, "revision_manual": 0, "total": len(df)}
     records_to_insert = []
+    mapeado_seguro = 0
+    revision_manual = 0
 
-    for _, row in df.iterrows():
+    for _, row in batch_df.iterrows():
         desc_sucia = str(row.get(desc_col, ""))
         desc_limpia = limpiar_descripcion(desc_sucia)
         sal_id = str(row.get(sal_col, "")) if sal_col else None
         precio = float(row[precio_col]) if precio_col and pd.notna(row.get(precio_col)) else None
         recetados = int(row[recetados_col]) if recetados_col and pd.notna(row.get(recetados_col)) else None
 
-        # Fuzzy match with thefuzz
+        # Fuzzy match
         best_match = process.extractOne(
             desc_limpia,
             cnis_descriptions,
@@ -287,20 +368,19 @@ async def procesar_catalogo(file: UploadFile = File(...)):
             if score >= SCORE_THRESHOLD:
                 id_cnis = cnis_lookup[matched_desc]["id_cnis"]
                 estado = "mapeado_seguro"
-                results["mapeado_seguro"] += 1
+                mapeado_seguro += 1
             else:
-                # Try Gemini fallback for low scores
                 gemini_result = await gemini_match(desc_limpia, cnis_descriptions)
                 if gemini_result and gemini_result["match"] in cnis_lookup:
                     id_cnis = cnis_lookup[gemini_result["match"]]["id_cnis"]
                     score = gemini_result["score"]
-                    estado = "revision_manual"  # Still flag for review since it's AI
-                    results["revision_manual"] += 1
+                    estado = "revision_manual"
+                    revision_manual += 1
                 else:
                     estado = "revision_manual"
-                    results["revision_manual"] += 1
+                    revision_manual += 1
 
-        record = {
+        records_to_insert.append({
             "sal_id": sal_id,
             "descripcion_sucia": desc_sucia,
             "descripcion_limpia": desc_limpia,
@@ -309,19 +389,23 @@ async def procesar_catalogo(file: UploadFile = File(...)):
             "id_cnis": id_cnis,
             "similitud_score": score,
             "estado_mapeo": estado,
-        }
-        records_to_insert.append(record)
+        })
 
-    # Batch insert
-    for i in range(0, len(records_to_insert), BATCH_SIZE):
-        batch = records_to_insert[i : i + BATCH_SIZE]
-        sb.table("local_catalogo").insert(batch).execute()
+    # Insert batch
+    if records_to_insert:
+        sb.table("local_catalogo").insert(records_to_insert).execute()
+
+    processed = offset + len(records_to_insert)
+    remaining = max(0, total_rows - processed)
 
     return {
-        "status": "ok",
-        "total": results["total"],
-        "mapeado_seguro": results["mapeado_seguro"],
-        "revision_manual": results["revision_manual"],
+        "status": "complete" if remaining == 0 else "processing",
+        "processed": processed,
+        "batch_inserted": len(records_to_insert),
+        "total": total_rows,
+        "remaining": remaining,
+        "mapeado_seguro": mapeado_seguro,
+        "revision_manual": revision_manual,
     }
 
 
@@ -337,18 +421,14 @@ async def tabla_maestra(
 ):
     """Devuelve JOIN de local_catalogo + cnis_catalogo con todas las columnas."""
     sb = get_sb()
-
-    # Use the SQL view for the join
     query = sb.table("v_tabla_maestra").select("*")
 
     if estado:
         query = query.eq("estado_mapeo", estado)
 
-    # Pagination
     offset = (page - 1) * limit
     query = query.range(offset, offset + limit - 1)
 
-    # Order
     if agrupar_por and agrupar_por in ("grupo_terapeutico", "indicaciones"):
         query = query.order(agrupar_por)
     else:
@@ -356,7 +436,6 @@ async def tabla_maestra(
 
     resp = query.execute()
 
-    # Get total count
     count_query = sb.table("v_tabla_maestra").select("id_local", count="exact")
     if estado:
         count_query = count_query.eq("estado_mapeo", estado)
@@ -379,7 +458,7 @@ async def get_revision_manual(
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=500),
 ):
-    """Devuelve medicamentos pendientes de revisión manual (score < 85)."""
+    """Devuelve medicamentos pendientes de revisión manual."""
     sb = get_sb()
     offset = (page - 1) * limit
 
@@ -415,14 +494,12 @@ async def patch_revision_manual(id_local: int, clave_cnis: str = Query(...)):
     """Asigna manualmente una clave CNIS a un medicamento."""
     sb = get_sb()
 
-    # Find the CNIS record
     cnis_resp = sb.table("cnis_catalogo").select("id_cnis").eq("clave_cnis", clave_cnis).execute()
     if not cnis_resp.data:
         raise HTTPException(404, f"Clave CNIS '{clave_cnis}' no encontrada")
 
     id_cnis = cnis_resp.data[0]["id_cnis"]
 
-    # Update local record
     sb.table("local_catalogo").update({
         "id_cnis": id_cnis,
         "estado_mapeo": "mapeado_seguro",
@@ -437,7 +514,7 @@ async def patch_revision_manual(id_local: int, clave_cnis: str = Query(...)):
 # ---------------------------------------------------------------------------
 @app.get("/api/buscar_cnis")
 async def buscar_cnis(q: str = Query(..., min_length=2)):
-    """Busca en el CNIS por texto parcial (para autocompletar en revisión manual)."""
+    """Busca en el CNIS por texto parcial."""
     sb = get_sb()
     resp = (
         sb.table("cnis_catalogo")

@@ -17,3 +17,6 @@ Thumbs.db
 *.swp
 *.swo
 .vercel
+.env*.local
+COMPENDIO_MEDICAMENTOS_V12012026VF.csv
+*.csv

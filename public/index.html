@@ -928,18 +928,22 @@
           </div>
         </div>
 
-        <div class="stats-grid" id="local-stats" style="display:none">
+        <div class="stats-grid" id="local-stats">
           <div class="stat-card">
-            <div class="label">Total Procesados</div>
-            <div class="value cyan" id="stat-local-total">0</div>
+            <div class="label">Registros Cargados</div>
+            <div class="value cyan" id="stat-local-total">—</div>
           </div>
           <div class="stat-card">
             <div class="label">Mapeado Seguro (≥85%)</div>
-            <div class="value green" id="stat-local-mapeados">0</div>
+            <div class="value green" id="stat-local-mapeados">—</div>
           </div>
           <div class="stat-card">
             <div class="label">Revisión Manual (&lt;85%)</div>
-            <div class="value amber" id="stat-local-revision">0</div>
+            <div class="value amber" id="stat-local-revision">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Estado</div>
+            <div class="value" id="stat-local-status" style="font-size:16px">Sin datos</div>
           </div>
         </div>
       </section>
@@ -1075,6 +1079,12 @@
         document.getElementById('stat-cnis-status').textContent = data.cnis_total > 0 ? '✅ Cargado' : 'Sin datos';
         document.getElementById('stat-cnis-update').textContent = data.cnis_total > 0 ? new Date().toLocaleDateString('es-MX') : '—';
 
+        // Update local stats
+        document.getElementById('stat-local-total').textContent = data.local_total > 0 ? data.local_total.toLocaleString() : '—';
+        document.getElementById('stat-local-mapeados').textContent = data.mapeado_seguro > 0 ? data.mapeado_seguro.toLocaleString() : '—';
+        document.getElementById('stat-local-revision').textContent = data.revision_manual > 0 ? data.revision_manual.toLocaleString() : '—';
+        document.getElementById('stat-local-status').textContent = data.local_total > 0 ? '✅ Cargado' : 'Sin datos';
+
         // Update revision badge
         const badge = document.getElementById('revision-badge');
         if (data.revision_manual > 0) {
@@ -1124,27 +1134,62 @@
       const progress = document.getElementById('cnis-progress');
       const fill = document.getElementById('cnis-progress-fill');
       progress.style.display = 'block';
-      fill.style.width = '30%';
-
-      const formData = new FormData();
-      formData.append('file', file);
+      fill.style.width = '10%';
 
       try {
-        fill.style.width = '60%';
-        const res = await fetch(API_BASE + '/cargar_cnis', { method: 'POST', body: formData });
-        const data = await res.json();
-        fill.style.width = '100%';
+        // Step 1: Upload file to Supabase Storage
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('type', 'cnis');
+        fill.style.width = '20%';
 
-        if (res.ok) {
-          showToast(`✅ CNIS cargado: ${data.insertados} claves`, 'success');
-          loadStats();
-        } else {
-          showToast(`❌ Error: ${data.detail || JSON.stringify(data)}`, 'error');
+        const uploadRes = await fetch(API_BASE + '/upload_file', { method: 'POST', body: formData });
+        if (!uploadRes.ok) {
+          const err = await uploadRes.json().catch(() => ({ detail: 'Error del servidor' }));
+          showToast(`❌ Error subida: ${err.detail || 'Error desconocido'}`, 'error');
+          progress.style.display = 'none';
+          return;
+        }
+        const uploadData = await uploadRes.json();
+        showToast(`📁 Archivo subido (${uploadData.total_rows} filas). Procesando...`, 'success');
+
+        // Step 2: Process in batches
+        let offset = 0;
+        const batchSize = 200;
+        const total = uploadData.total_rows;
+        let firstBatch = true;
+
+        while (true) {
+          const batchForm = new FormData();
+          batchForm.append('file_path', uploadData.file_path);
+          batchForm.append('type', 'cnis');
+          batchForm.append('offset', offset.toString());
+          batchForm.append('batch_size', batchSize.toString());
+          if (firstBatch) batchForm.append('clear_data', 'true');
+          firstBatch = false;
+
+          const batchRes = await fetch(API_BASE + '/procesar_lote', { method: 'POST', body: batchForm });
+          if (!batchRes.ok) {
+            const err = await batchRes.json().catch(() => ({ detail: 'Error del servidor' }));
+            showToast(`❌ Error lote: ${err.detail || 'Error desconocido'}`, 'error');
+            break;
+          }
+          const batchData = await batchRes.json();
+          const pct = Math.min(95, 20 + (batchData.processed / Math.max(1, batchData.total)) * 75);
+          fill.style.width = pct + '%';
+
+          if (batchData.status === 'complete' || batchData.remaining === 0) {
+            fill.style.width = '100%';
+            showToast(`✅ CNIS cargado: ${batchData.processed} claves`, 'success');
+            loadStats();
+            break;
+          }
+          offset = batchData.processed;
         }
       } catch (e) {
         showToast('❌ Error de conexión: ' + e.message, 'error');
       }
-      setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; }, 2000);
+      setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; }, 3000);
     }
 
     function clearCNISFile() {
@@ -1196,38 +1241,82 @@
       if (!localFile) return;
       const btn = document.getElementById('btn-procesar');
       btn.disabled = true;
-      btn.innerHTML = '<div class="spinner"></div> Procesando...';
+      btn.innerHTML = '<div class="spinner"></div> Subiendo archivo...';
 
       const progress = document.getElementById('local-progress');
       const fill = document.getElementById('local-progress-fill');
       progress.style.display = 'block';
-      fill.style.width = '20%';
-
-      const formData = new FormData();
-      formData.append('file', localFile);
+      fill.style.width = '10%';
 
       try {
-        fill.style.width = '50%';
-        const res = await fetch(API_BASE + '/procesar_catalogo', { method: 'POST', body: formData });
-        const data = await res.json();
-        fill.style.width = '100%';
+        // Step 1: Upload file to Supabase Storage
+        const formData = new FormData();
+        formData.append('file', localFile);
+        formData.append('type', 'local');
 
-        if (res.ok) {
-          document.getElementById('local-stats').style.display = 'grid';
-          document.getElementById('stat-local-total').textContent = data.total;
-          document.getElementById('stat-local-mapeados').textContent = data.mapeado_seguro;
-          document.getElementById('stat-local-revision').textContent = data.revision_manual;
-          showToast(`✅ Procesados: ${data.total} | Mapeados: ${data.mapeado_seguro} | Revisión: ${data.revision_manual}`, 'success');
-          loadStats();
-        } else {
-          showToast(`❌ Error: ${data.detail || JSON.stringify(data)}`, 'error');
+        const uploadRes = await fetch(API_BASE + '/upload_file', { method: 'POST', body: formData });
+        if (!uploadRes.ok) {
+          const err = await uploadRes.json().catch(() => ({ detail: 'Error del servidor' }));
+          showToast(`❌ Error subida: ${err.detail || 'Error desconocido'}`, 'error');
+          progress.style.display = 'none';
+          btn.innerHTML = '🔗 Procesar y Emparejar con CNIS';
+          btn.disabled = false;
+          return;
+        }
+        const uploadData = await uploadRes.json();
+        fill.style.width = '15%';
+        showToast(`📁 Archivo subido (${uploadData.total_rows} filas). Emparejando...`, 'success');
+        btn.innerHTML = '<div class="spinner"></div> Emparejando...';
+
+        // Step 2: Process in batches (smaller for local due to fuzzy matching)
+        let offset = 0;
+        const batchSize = 10;  // Small batches for fuzzy matching
+        const total = uploadData.total_rows;
+        let totalMapeados = 0;
+        let totalRevision = 0;
+        let firstBatch = true;
+
+        while (true) {
+          const batchForm = new FormData();
+          batchForm.append('file_path', uploadData.file_path);
+          batchForm.append('type', 'local');
+          batchForm.append('offset', offset.toString());
+          batchForm.append('batch_size', batchSize.toString());
+          if (firstBatch) batchForm.append('clear_data', 'true');
+          firstBatch = false;
+
+          const batchRes = await fetch(API_BASE + '/procesar_lote', { method: 'POST', body: batchForm });
+          if (!batchRes.ok) {
+            const err = await batchRes.json().catch(() => ({ detail: 'Error del servidor' }));
+            showToast(`❌ Error lote: ${err.detail || 'Error desconocido'}`, 'error');
+            break;
+          }
+          const batchData = await batchRes.json();
+          totalMapeados += batchData.mapeado_seguro || 0;
+          totalRevision += batchData.revision_manual || 0;
+
+          const pct = Math.min(95, 15 + (batchData.processed / Math.max(1, batchData.total)) * 80);
+          fill.style.width = pct + '%';
+          btn.innerHTML = `<div class="spinner"></div> ${batchData.processed}/${batchData.total} procesados...`;
+
+          if (batchData.status === 'complete' || batchData.remaining === 0) {
+            fill.style.width = '100%';
+            document.getElementById('stat-local-total').textContent = batchData.processed;
+            document.getElementById('stat-local-mapeados').textContent = totalMapeados;
+            document.getElementById('stat-local-revision').textContent = totalRevision;
+            document.getElementById('stat-local-status').textContent = '✅ Cargado';
+            showToast(`✅ Procesados: ${batchData.processed} | Mapeados: ${totalMapeados} | Revisión: ${totalRevision}`, 'success');
+            loadStats();
+            break;
+          }
+          offset = batchData.processed;
         }
       } catch (e) {
         showToast('❌ Error: ' + e.message, 'error');
       }
       btn.innerHTML = '🔗 Procesar y Emparejar con CNIS';
       btn.disabled = false;
-      setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; }, 2000);
+      setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; }, 3000);
     }
 
     // ---- Tabla Maestra ----
@@ -1270,12 +1359,12 @@
         let html = '';
         Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0])).forEach(([groupName, items]) => {
           const avgPrice = items.reduce((s, i) => s + (parseFloat(i.precio) || 0), 0) / items.length;
-          html += `<tr><td colspan="11"><div class="group-header" onclick="this.parentElement.parentElement.querySelectorAll('.group-row-${groupName.replace(/\W/g,'_')}').forEach(r=>r.style.display=r.style.display==='none'?'':'none')">
+          html += `<tr><td colspan="11"><div class="group-header" onclick="this.parentElement.parentElement.querySelectorAll('.group-row-${groupName.replace(/\W/g, '_')}').forEach(r=>r.style.display=r.style.display==='none'?'':'none')">
             <h4>📁 ${groupName}</h4>
             <span class="group-stats">${items.length} medicamentos · Precio promedio: $${avgPrice.toFixed(2)}</span>
           </div></td></tr>`;
           items.forEach(r => {
-            html += renderRow(r, `group-row-${groupName.replace(/\W/g,'_')}`);
+            html += renderRow(r, `group-row-${groupName.replace(/\W/g, '_')}`);
           });
         });
         tbody.innerHTML = html;
@@ -1316,7 +1405,7 @@
 
     function exportCSV() {
       if (!allTMData.length) return showToast('No hay datos para exportar', 'error');
-      const headers = ['sal_id','descripcion_original','precio','recetados','clave_cnis','descripcion_cnis','grupo_terapeutico','indicaciones','contraindicaciones','similitud_score','estado_mapeo'];
+      const headers = ['sal_id', 'descripcion_original', 'precio', 'recetados', 'clave_cnis', 'descripcion_cnis', 'grupo_terapeutico', 'indicaciones', 'contraindicaciones', 'similitud_score', 'estado_mapeo'];
       let csv = headers.join(',') + '\n';
       allTMData.forEach(r => {
         csv += headers.map(h => `"${(r[h] || '').toString().replace(/"/g, '""')}"`).join(',') + '\n';
@@ -1324,7 +1413,7 @@
       const blob = new Blob([csv], { type: 'text/csv' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `tabla_maestra_${new Date().toISOString().slice(0,10)}.csv`;
+      a.download = `tabla_maestra_${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       showToast('📥 CSV descargado');
     }
@@ -1393,7 +1482,7 @@
           } else {
             sugg.classList.remove('visible');
           }
-        } catch (e) {}
+        } catch (e) { }
       }, 300);
     }
 
