@@ -372,7 +372,7 @@ async def _process_local_batch(sb, df, offset, batch_size, total_rows, clear_dat
         estado = "pendiente"
 
         if best_match:
-            matched_desc, score, _ = best_match
+            matched_desc, score = best_match[0], best_match[1]
             if score >= SCORE_THRESHOLD:
                 id_cnis = cnis_lookup[matched_desc]["id_cnis"]
                 estado = "mapeado_seguro"
