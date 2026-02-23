@@ -1,0 +1,18 @@
+# Dependencies
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.local
+node_modules/
+.vercel/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

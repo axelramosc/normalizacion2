@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MedNorm — Dashboard de Normalización Farmacéutica</title>
+  <meta name="description" content="Normalización de catálogos de medicamentos con CNIS. Emparejamiento fuzzy, comparación de precios por grupo terapéutico.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    /* ============================================================
+       MedNorm — Design System
+       ============================================================ */
+    :root {
+      --bg-primary: #0F172A;
+      --bg-secondary: #1E293B;
+      --bg-card: rgba(30, 41, 59, 0.7);
+      --bg-card-hover: rgba(30, 41, 59, 0.9);
+      --bg-glass: rgba(15, 23, 42, 0.6);
+      --border-glass: rgba(6, 182, 212, 0.15);
+      --border-subtle: rgba(148, 163, 184, 0.1);
+      --cyan: #06B6D4;
+      --cyan-dim: rgba(6, 182, 212, 0.15);
+      --cyan-glow: rgba(6, 182, 212, 0.3);
+      --green: #10B981;
+      --green-dim: rgba(16, 185, 129, 0.15);
+      --amber: #F59E0B;
+      --amber-dim: rgba(245, 158, 11, 0.15);
+      --red: #EF4444;
+      --red-dim: rgba(239, 68, 68, 0.15);
+      --text-primary: #F1F5F9;
+      --text-secondary: #94A3B8;
+      --text-muted: #64748B;
+      --radius: 12px;
+      --radius-sm: 8px;
+      --radius-lg: 16px;
+      --sidebar-width: 260px;
+      --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Manrope', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Background animated gradient */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(ellipse at 20% 50%, rgba(6, 182, 212, 0.05) 0%, transparent 50%),
+                  radial-gradient(ellipse at 80% 20%, rgba(139, 92, 246, 0.03) 0%, transparent 50%);
+      z-index: 0;
+      animation: bgFloat 20s ease-in-out infinite alternate;
+    }
+    @keyframes bgFloat {
+      0% { transform: translate(0, 0) rotate(0deg); }
+      100% { transform: translate(-3%, 3%) rotate(2deg); }
+    }
+
+    /* Layout */
+    .app { display: flex; min-height: 100vh; position: relative; z-index: 1; }
+
+    /* Sidebar */
+    .sidebar {
+      width: var(--sidebar-width);
+      background: var(--bg-glass);
+      backdrop-filter: blur(20px);
+      border-right: 1px solid var(--border-glass);
+      padding: 24px 16px;
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      z-index: 100;
+      transition: var(--transition);
+    }
+
+    .sidebar-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      margin-bottom: 32px;
+    }
+    .sidebar-brand .icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--cyan), #8B5CF6);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+    .sidebar-brand h1 {
+      font-size: 20px;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--cyan), #8B5CF6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .sidebar-brand span {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    .nav-section {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      padding: 0 12px;
+      margin-bottom: 8px;
+      margin-top: 16px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: var(--transition);
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      position: relative;
+      margin-bottom: 2px;
+    }
+    .nav-item:hover {
+      background: var(--cyan-dim);
+      color: var(--text-primary);
+    }
+    .nav-item.active {
+      background: linear-gradient(135deg, rgba(6, 182, 212, 0.15), rgba(139, 92, 246, 0.1));
+      color: var(--cyan);
+      font-weight: 600;
+    }
+    .nav-item.active::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 24px;
+      background: var(--cyan);
+      border-radius: 0 4px 4px 0;
+    }
+    .nav-item .badge {
+      margin-left: auto;
+      background: var(--amber-dim);
+      color: var(--amber);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 100px;
+    }
+
+    /* Main content */
+    .main {
+      margin-left: var(--sidebar-width);
+      flex: 1;
+      padding: 24px 32px;
+      min-height: 100vh;
+    }
+
+    /* Top bar */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 32px;
+    }
+    .topbar h2 {
+      font-size: 24px;
+      font-weight: 700;
+    }
+    .topbar-stats {
+      display: flex;
+      gap: 12px;
+    }
+    .stat-pill {
+      background: var(--bg-card);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--border-glass);
+      padding: 8px 16px;
+      border-radius: 100px;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .stat-pill .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    /* Cards / Glass panels */
+    .glass-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--border-glass);
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      transition: var(--transition);
+    }
+    .glass-card:hover {
+      border-color: var(--cyan-glow);
+    }
+
+    /* Upload zone */
+    .upload-zone {
+      border: 2px dashed rgba(6, 182, 212, 0.3);
+      border-radius: var(--radius-lg);
+      padding: 64px 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: var(--transition);
+      background: rgba(6, 182, 212, 0.03);
+      position: relative;
+      overflow: hidden;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--cyan);
+      background: rgba(6, 182, 212, 0.08);
+      transform: translateY(-2px);
+    }
+    .upload-zone.dragover {
+      box-shadow: 0 0 40px rgba(6, 182, 212, 0.15);
+    }
+    .upload-zone .cloud-icon {
+      font-size: 56px;
+      margin-bottom: 16px;
+      display: block;
+      opacity: 0.8;
+    }
+    .upload-zone h3 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .upload-zone p {
+      color: var(--text-secondary);
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+
+    /* Buttons */
+    .btn {
+      padding: 10px 24px;
+      border-radius: var(--radius-sm);
+      font-family: 'Manrope', sans-serif;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      border: none;
+      transition: var(--transition);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--cyan), #0891B2);
+      color: white;
+      box-shadow: 0 4px 16px rgba(6, 182, 212, 0.3);
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(6, 182, 212, 0.4);
+    }
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid var(--border-glass);
+      color: var(--text-secondary);
+    }
+    .btn-secondary:hover {
+      border-color: var(--cyan);
+      color: var(--cyan);
+    }
+    .btn-sm {
+      padding: 6px 14px;
+      font-size: 12px;
+    }
+    .btn-amber {
+      background: var(--amber-dim);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: var(--amber);
+    }
+
+    /* Table styles */
+    .data-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 13px;
+    }
+    .data-table thead th {
+      padding: 12px 16px;
+      text-align: left;
+      font-weight: 700;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border-subtle);
+      position: sticky;
+      top: 0;
+      background: var(--bg-secondary);
+      z-index: 10;
+    }
+    .data-table tbody tr {
+      transition: var(--transition);
+    }
+    .data-table tbody tr:hover {
+      background: rgba(6, 182, 212, 0.05);
+    }
+    .data-table tbody td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      max-width: 220px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .data-table tbody td:first-child { color: var(--text-primary); font-weight: 500; }
+
+    /* Score badge */
+    .score-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 10px;
+      border-radius: 100px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .score-high { background: var(--green-dim); color: var(--green); }
+    .score-medium { background: var(--amber-dim); color: var(--amber); }
+    .score-low { background: var(--red-dim); color: var(--red); }
+
+    /* Estado badge */
+    .estado-badge {
+      padding: 4px 12px;
+      border-radius: 100px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .estado-mapeado { background: var(--green-dim); color: var(--green); }
+    .estado-revision { background: var(--amber-dim); color: var(--amber); }
+    .estado-pendiente { background: rgba(100,116,139,0.15); color: var(--text-muted); }
+
+    /* Controls bar */
+    .controls-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .controls-bar select, .controls-bar input[type="text"] {
+      background: var(--bg-card);
+      border: 1px solid var(--border-glass);
+      color: var(--text-primary);
+      padding: 10px 16px;
+      border-radius: var(--radius-sm);
+      font-family: 'Manrope', sans-serif;
+      font-size: 13px;
+      outline: none;
+      transition: var(--transition);
+    }
+    .controls-bar select:focus, .controls-bar input:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 3px var(--cyan-dim);
+    }
+    .controls-bar input[type="text"] { min-width: 260px; }
+
+    /* Table wrapper */
+    .table-wrapper {
+      overflow-x: auto;
+      border-radius: var(--radius);
+      border: 1px solid var(--border-glass);
+      max-height: 65vh;
+      overflow-y: auto;
+    }
+
+    /* Review cards */
+    .review-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--border-glass);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      transition: var(--transition);
+    }
+    .review-card:hover {
+      border-color: var(--cyan-glow);
+      transform: translateX(4px);
+    }
+    .review-left { flex: 1; }
+    .review-left h4 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    .review-left .meta { font-size: 12px; color: var(--text-muted); display: flex; gap: 16px; }
+    .review-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .review-right input {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-glass);
+      color: var(--text-primary);
+      padding: 8px 14px;
+      border-radius: var(--radius-sm);
+      font-family: 'Manrope', sans-serif;
+      font-size: 13px;
+      width: 300px;
+      outline: none;
+    }
+    .review-right input:focus {
+      border-color: var(--cyan);
+    }
+
+    /* Search suggestions */
+    .suggestions {
+      position: absolute;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-glass);
+      border-radius: var(--radius-sm);
+      max-height: 200px;
+      overflow-y: auto;
+      width: 300px;
+      z-index: 999;
+      display: none;
+    }
+    .suggestions.visible { display: block; }
+    .suggestion-item {
+      padding: 10px 14px;
+      cursor: pointer;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border-subtle);
+      transition: var(--transition);
+    }
+    .suggestion-item:hover {
+      background: var(--cyan-dim);
+    }
+    .suggestion-item .clave { color: var(--cyan); font-weight: 700; font-size: 12px; }
+
+    /* Pagination */
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 20px;
+    }
+    .pagination button {
+      background: var(--bg-card);
+      border: 1px solid var(--border-glass);
+      color: var(--text-secondary);
+      padding: 8px 14px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-family: 'Manrope', sans-serif;
+      font-size: 13px;
+      transition: var(--transition);
+    }
+    .pagination button:hover { border-color: var(--cyan); color: var(--cyan); }
+    .pagination button.active { background: var(--cyan); color: white; border-color: var(--cyan); }
+
+    /* Progress bar */
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: var(--bg-secondary);
+      border-radius: 100px;
+      overflow: hidden;
+      margin-top: 16px;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--cyan), #8B5CF6);
+      border-radius: 100px;
+      transition: width 0.8s ease;
+      width: 0%;
+    }
+
+    /* Stats grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-top: 24px;
+    }
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-glass);
+      border-radius: var(--radius);
+      padding: 20px;
+      text-align: center;
+    }
+    .stat-card .label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+    .stat-card .value { font-size: 28px; font-weight: 800; }
+    .stat-card .value.cyan { color: var(--cyan); }
+    .stat-card .value.green { color: var(--green); }
+    .stat-card .value.amber { color: var(--amber); }
+
+    /* Group header */
+    .group-header {
+      background: linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(139, 92, 246, 0.05));
+      border: 1px solid rgba(6, 182, 212, 0.15);
+      padding: 14px 20px;
+      border-radius: var(--radius-sm);
+      margin: 12px 0 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+    }
+    .group-header h4 { font-size: 14px; font-weight: 700; color: var(--cyan); }
+    .group-header .group-stats { font-size: 12px; color: var(--text-muted); }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--bg-card);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--border-glass);
+      border-radius: var(--radius);
+      padding: 16px 24px;
+      font-size: 14px;
+      z-index: 9999;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: var(--transition);
+      max-width: 400px;
+    }
+    .toast.visible { opacity: 1; transform: translateY(0); }
+    .toast.success { border-color: var(--green); }
+    .toast.error { border-color: var(--red); }
+
+    /* Loading spinner */
+    .spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid var(--border-glass);
+      border-top-color: var(--cyan);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Section hidden by default */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* File info */
+    .file-info {
+      margin-top: 16px;
+      padding: 12px 16px;
+      background: var(--cyan-dim);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      display: none;
+      align-items: center;
+      gap: 8px;
+    }
+    .file-info.visible { display: flex; }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .sidebar { width: 70px; padding: 16px 8px; }
+      .sidebar .nav-item span, .sidebar-brand h1, .sidebar-brand span, .nav-section { display: none; }
+      .main { margin-left: 70px; padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- ============ Sidebar ============ -->
+    <nav class="sidebar">
+      <div class="sidebar-brand">
+        <div class="icon">💊</div>
+        <div>
+          <h1>MedNorm</h1>
+          <span>v2.0</span>
+        </div>
+      </div>
+
+      <div class="nav-section">Módulos</div>
+
+      <div class="nav-item active" data-page="config-cnis" onclick="navigateTo('config-cnis')">
+        <span>⚙️</span>
+        <span>Configuración CNIS</span>
+      </div>
+      <div class="nav-item" data-page="carga-local" onclick="navigateTo('carga-local')">
+        <span>📤</span>
+        <span>Carga Local</span>
+      </div>
+      <div class="nav-item" data-page="tabla-maestra" onclick="navigateTo('tabla-maestra')">
+        <span>📊</span>
+        <span>Tabla Maestra</span>
+      </div>
+      <div class="nav-item" data-page="revision-manual" onclick="navigateTo('revision-manual')">
+        <span>🔍</span>
+        <span>Revisión Manual</span>
+        <span class="badge" id="revision-badge" style="display:none">0</span>
+      </div>
+    </nav>
+
+    <!-- ============ Main Content ============ -->
+    <main class="main">
+
+      <!-- ===== Page 1: Config CNIS ===== -->
+      <section class="page active" id="page-config-cnis">
+        <div class="topbar">
+          <h2>Catálogo Nacional de Insumos para la Salud</h2>
+        </div>
+
+        <div class="glass-card">
+          <div class="upload-zone" id="cnis-upload-zone">
+            <span class="cloud-icon">☁️</span>
+            <h3>Arrastra tu archivo Excel del CNIS aquí</h3>
+            <p>Formatos permitidos: .xlsx, .xls</p>
+            <button class="btn btn-primary" onclick="document.getElementById('cnis-file-input').click()">Seleccionar archivo</button>
+            <input type="file" id="cnis-file-input" accept=".xlsx,.xls" style="display:none">
+          </div>
+          <div class="file-info" id="cnis-file-info">
+            <span>📄</span>
+            <span id="cnis-file-name"></span>
+          </div>
+          <div class="progress-bar" id="cnis-progress" style="display:none">
+            <div class="progress-fill" id="cnis-progress-fill"></div>
+          </div>
+        </div>
+
+        <div class="stats-grid" id="cnis-stats">
+          <div class="stat-card">
+            <div class="label">Claves Cargadas</div>
+            <div class="value cyan" id="stat-cnis-total">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Última Actualización</div>
+            <div class="value" id="stat-cnis-update" style="font-size:16px">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Estado</div>
+            <div class="value" id="stat-cnis-status" style="font-size:16px">Sin datos</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== Page 2: Carga Local ===== -->
+      <section class="page" id="page-carga-local">
+        <div class="topbar">
+          <h2>Catálogo Local de Medicamentos</h2>
+        </div>
+
+        <div class="glass-card">
+          <div class="upload-zone" id="local-upload-zone">
+            <span class="cloud-icon">☁️</span>
+            <h3>Arrastra tu archivo Excel local aquí</h3>
+            <p>Formatos: .xlsx, .xls — Se conservan sal_id, precio y recetados</p>
+            <button class="btn btn-primary" onclick="document.getElementById('local-file-input').click()">Seleccionar archivo</button>
+            <input type="file" id="local-file-input" accept=".xlsx,.xls" style="display:none">
+          </div>
+          <div class="file-info" id="local-file-info">
+            <span>📄</span>
+            <span id="local-file-name"></span>
+          </div>
+          <div class="progress-bar" id="local-progress" style="display:none">
+            <div class="progress-fill" id="local-progress-fill"></div>
+          </div>
+
+          <div style="margin-top:24px; text-align:center">
+            <button class="btn btn-primary" id="btn-procesar" onclick="procesarLocal()" disabled style="padding:14px 40px;font-size:16px">
+              🔗 Procesar y Emparejar con CNIS
+            </button>
+          </div>
+        </div>
+
+        <div class="stats-grid" id="local-stats" style="display:none">
+          <div class="stat-card">
+            <div class="label">Total Procesados</div>
+            <div class="value cyan" id="stat-local-total">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Mapeado Seguro (≥85%)</div>
+            <div class="value green" id="stat-local-mapeados">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Revisión Manual (&lt;85%)</div>
+            <div class="value amber" id="stat-local-revision">0</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== Page 3: Tabla Maestra ===== -->
+      <section class="page" id="page-tabla-maestra">
+        <div class="topbar">
+          <h2>Tabla Maestra</h2>
+          <div class="topbar-stats">
+            <div class="stat-pill"><div class="dot" style="background:var(--cyan)"></div> Total: <strong id="tm-total">0</strong></div>
+            <div class="stat-pill"><div class="dot" style="background:var(--green)"></div> Mapeados: <strong id="tm-mapeados">0</strong></div>
+            <div class="stat-pill"><div class="dot" style="background:var(--amber)"></div> Revisión: <strong id="tm-revision">0</strong></div>
+          </div>
+        </div>
+
+        <div class="controls-bar">
+          <select id="tm-agrupar" onchange="loadTablaMaestra()">
+            <option value="">Sin agrupar</option>
+            <option value="grupo_terapeutico">Grupo Terapéutico</option>
+            <option value="indicaciones">Indicaciones</option>
+          </select>
+          <select id="tm-estado" onchange="loadTablaMaestra()">
+            <option value="">Todos</option>
+            <option value="mapeado_seguro">Mapeado Seguro</option>
+            <option value="revision_manual">Revisión Manual</option>
+            <option value="pendiente">Pendiente</option>
+          </select>
+          <input type="text" id="tm-search" placeholder="🔎 Buscar medicamento..." oninput="filterTable()">
+          <div style="margin-left:auto">
+            <button class="btn btn-secondary btn-sm" onclick="exportCSV()">📥 Exportar CSV</button>
+            <button class="btn btn-primary btn-sm" onclick="loadTablaMaestra()" style="margin-left:8px">🔄 Actualizar</button>
+          </div>
+        </div>
+
+        <div class="glass-card" style="padding:0; overflow:hidden">
+          <div class="table-wrapper">
+            <table class="data-table" id="tabla-maestra">
+              <thead>
+                <tr>
+                  <th>SAL ID</th>
+                  <th>Descripción Original</th>
+                  <th>Precio</th>
+                  <th>Recetados</th>
+                  <th>Clave CNIS</th>
+                  <th>Descripción CNIS</th>
+                  <th>Grupo Terapéutico</th>
+                  <th>Indicaciones</th>
+                  <th>Contraindicaciones</th>
+                  <th>Score</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="tm-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="pagination" id="tm-pagination"></div>
+      </section>
+
+      <!-- ===== Page 4: Revisión Manual ===== -->
+      <section class="page" id="page-revision-manual">
+        <div class="topbar">
+          <h2>Revisión Manual</h2>
+          <div class="stat-pill" style="background:var(--amber-dim);border-color:rgba(245,158,11,0.3)">
+            <span style="color:var(--amber);font-weight:700">⚠️ <span id="rm-pending-count">0</span> pendientes de revisión</span>
+          </div>
+        </div>
+
+        <div class="controls-bar">
+          <select id="rm-sort" onchange="loadRevision()">
+            <option value="">Ordenar por Score ↓</option>
+            <option value="asc">Score Ascendente</option>
+          </select>
+          <button class="btn btn-amber btn-sm" onclick="aprobarAltos()">✅ Aprobar todos con score &gt; 75</button>
+          <div style="margin-left:auto">
+            <button class="btn btn-primary btn-sm" onclick="loadRevision()">🔄 Actualizar</button>
+          </div>
+        </div>
+
+        <div id="rm-list"></div>
+        <div class="pagination" id="rm-pagination"></div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // ============================================================
+    // MedNorm — Frontend Logic
+    // ============================================================
+    const API_BASE = window.location.origin + '/api';
+    let currentPage = { tm: 1, rm: 1 };
+    let allTMData = [];
+
+    // ---- Navigation ----
+    function navigateTo(page) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      document.getElementById('page-' + page).classList.add('active');
+      document.querySelector(`[data-page="${page}"]`).classList.add('active');
+
+      if (page === 'tabla-maestra') loadTablaMaestra();
+      if (page === 'revision-manual') loadRevision();
+      if (page === 'config-cnis') loadStats();
+    }
+
+    // ---- Toast ----
+    function showToast(msg, type = 'success') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast visible ' + type;
+      setTimeout(() => t.classList.remove('visible'), 4000);
+    }
+
+    // ---- Stats ----
+    async function loadStats() {
+      try {
+        const res = await fetch(API_BASE + '/stats');
+        const data = await res.json();
+        document.getElementById('stat-cnis-total').textContent = data.cnis_total?.toLocaleString() || '—';
+        document.getElementById('stat-cnis-status').textContent = data.cnis_total > 0 ? '✅ Cargado' : 'Sin datos';
+        document.getElementById('stat-cnis-update').textContent = data.cnis_total > 0 ? new Date().toLocaleDateString('es-MX') : '—';
+
+        // Update revision badge
+        const badge = document.getElementById('revision-badge');
+        if (data.revision_manual > 0) {
+          badge.style.display = 'inline';
+          badge.textContent = data.revision_manual;
+        }
+
+        // Update tabla maestra stats
+        document.getElementById('tm-total').textContent = data.local_total || 0;
+        document.getElementById('tm-mapeados').textContent = data.mapeado_seguro || 0;
+        document.getElementById('tm-revision').textContent = data.revision_manual || 0;
+      } catch (e) {
+        console.log('Stats not available yet');
+      }
+    }
+
+    // ---- CNIS Upload ----
+    const cnisZone = document.getElementById('cnis-upload-zone');
+    const cnisInput = document.getElementById('cnis-file-input');
+    let cnisFile = null;
+
+    cnisZone.addEventListener('dragover', e => { e.preventDefault(); cnisZone.classList.add('dragover'); });
+    cnisZone.addEventListener('dragleave', () => cnisZone.classList.remove('dragover'));
+    cnisZone.addEventListener('drop', e => {
+      e.preventDefault();
+      cnisZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) {
+        cnisFile = e.dataTransfer.files[0];
+        showFileInfo('cnis', cnisFile);
+        uploadCNIS(cnisFile);
+      }
+    });
+    cnisInput.addEventListener('change', e => {
+      cnisFile = e.target.files[0];
+      if (cnisFile) {
+        showFileInfo('cnis', cnisFile);
+        uploadCNIS(cnisFile);
+      }
+    });
+
+    function showFileInfo(prefix, file) {
+      document.getElementById(`${prefix}-file-info`).classList.add('visible');
+      document.getElementById(`${prefix}-file-name`).textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+    }
+
+    async function uploadCNIS(file) {
+      const progress = document.getElementById('cnis-progress');
+      const fill = document.getElementById('cnis-progress-fill');
+      progress.style.display = 'block';
+      fill.style.width = '30%';
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        fill.style.width = '60%';
+        const res = await fetch(API_BASE + '/cargar_cnis', { method: 'POST', body: formData });
+        const data = await res.json();
+        fill.style.width = '100%';
+
+        if (res.ok) {
+          showToast(`✅ CNIS cargado: ${data.insertados} claves`, 'success');
+          loadStats();
+        } else {
+          showToast(`❌ Error: ${data.detail || JSON.stringify(data)}`, 'error');
+        }
+      } catch (e) {
+        showToast('❌ Error de conexión: ' + e.message, 'error');
+      }
+      setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; }, 2000);
+    }
+
+    // ---- Local Upload ----
+    const localZone = document.getElementById('local-upload-zone');
+    const localInput = document.getElementById('local-file-input');
+    let localFile = null;
+
+    localZone.addEventListener('dragover', e => { e.preventDefault(); localZone.classList.add('dragover'); });
+    localZone.addEventListener('dragleave', () => localZone.classList.remove('dragover'));
+    localZone.addEventListener('drop', e => {
+      e.preventDefault();
+      localZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) {
+        localFile = e.dataTransfer.files[0];
+        showFileInfo('local', localFile);
+        document.getElementById('btn-procesar').disabled = false;
+      }
+    });
+    localInput.addEventListener('change', e => {
+      localFile = e.target.files[0];
+      if (localFile) {
+        showFileInfo('local', localFile);
+        document.getElementById('btn-procesar').disabled = false;
+      }
+    });
+
+    async function procesarLocal() {
+      if (!localFile) return;
+      const btn = document.getElementById('btn-procesar');
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner"></div> Procesando...';
+
+      const progress = document.getElementById('local-progress');
+      const fill = document.getElementById('local-progress-fill');
+      progress.style.display = 'block';
+      fill.style.width = '20%';
+
+      const formData = new FormData();
+      formData.append('file', localFile);
+
+      try {
+        fill.style.width = '50%';
+        const res = await fetch(API_BASE + '/procesar_catalogo', { method: 'POST', body: formData });
+        const data = await res.json();
+        fill.style.width = '100%';
+
+        if (res.ok) {
+          document.getElementById('local-stats').style.display = 'grid';
+          document.getElementById('stat-local-total').textContent = data.total;
+          document.getElementById('stat-local-mapeados').textContent = data.mapeado_seguro;
+          document.getElementById('stat-local-revision').textContent = data.revision_manual;
+          showToast(`✅ Procesados: ${data.total} | Mapeados: ${data.mapeado_seguro} | Revisión: ${data.revision_manual}`, 'success');
+          loadStats();
+        } else {
+          showToast(`❌ Error: ${data.detail || JSON.stringify(data)}`, 'error');
+        }
+      } catch (e) {
+        showToast('❌ Error: ' + e.message, 'error');
+      }
+      btn.innerHTML = '🔗 Procesar y Emparejar con CNIS';
+      btn.disabled = false;
+      setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; }, 2000);
+    }
+
+    // ---- Tabla Maestra ----
+    async function loadTablaMaestra(page = 1) {
+      currentPage.tm = page;
+      const agrupar = document.getElementById('tm-agrupar').value;
+      const estado = document.getElementById('tm-estado').value;
+      let url = `${API_BASE}/tabla_maestra?page=${page}&limit=100`;
+      if (agrupar) url += `&agrupar_por=${agrupar}`;
+      if (estado) url += `&estado=${estado}`;
+
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        allTMData = data.data || [];
+        renderTablaMaestra(allTMData, agrupar);
+        renderPagination('tm', data.total, page, 100);
+        loadStats();
+      } catch (e) {
+        showToast('Error cargando tabla: ' + e.message, 'error');
+      }
+    }
+
+    function renderTablaMaestra(rows, groupBy) {
+      const tbody = document.getElementById('tm-body');
+      if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text-muted)">No hay datos. Carga el CNIS y un catálogo local primero.</td></tr>';
+        return;
+      }
+
+      if (groupBy) {
+        // Group data
+        const groups = {};
+        rows.forEach(r => {
+          const key = r[groupBy] || 'Sin clasificar';
+          if (!groups[key]) groups[key] = [];
+          groups[key].push(r);
+        });
+
+        let html = '';
+        Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0])).forEach(([groupName, items]) => {
+          const avgPrice = items.reduce((s, i) => s + (parseFloat(i.precio) || 0), 0) / items.length;
+          html += `<tr><td colspan="11"><div class="group-header" onclick="this.parentElement.parentElement.querySelectorAll('.group-row-${groupName.replace(/\W/g,'_')}').forEach(r=>r.style.display=r.style.display==='none'?'':'none')">
+            <h4>📁 ${groupName}</h4>
+            <span class="group-stats">${items.length} medicamentos · Precio promedio: $${avgPrice.toFixed(2)}</span>
+          </div></td></tr>`;
+          items.forEach(r => {
+            html += renderRow(r, `group-row-${groupName.replace(/\W/g,'_')}`);
+          });
+        });
+        tbody.innerHTML = html;
+      } else {
+        tbody.innerHTML = rows.map(r => renderRow(r)).join('');
+      }
+    }
+
+    function renderRow(r, extraClass = '') {
+      const scoreClass = (r.similitud_score || 0) >= 85 ? 'score-high' : (r.similitud_score || 0) >= 60 ? 'score-medium' : 'score-low';
+      const estadoClass = r.estado_mapeo === 'mapeado_seguro' ? 'estado-mapeado' : r.estado_mapeo === 'revision_manual' ? 'estado-revision' : 'estado-pendiente';
+      return `<tr class="${extraClass}">
+        <td>${r.sal_id || '—'}</td>
+        <td title="${r.descripcion_original || ''}">${r.descripcion_original || '—'}</td>
+        <td>$${parseFloat(r.precio || 0).toFixed(2)}</td>
+        <td>${r.recetados || '—'}</td>
+        <td style="color:var(--cyan);font-weight:600">${r.clave_cnis || '—'}</td>
+        <td title="${r.descripcion_cnis || ''}">${r.descripcion_cnis || '—'}</td>
+        <td>${r.grupo_terapeutico || '—'}</td>
+        <td title="${r.indicaciones || ''}">${(r.indicaciones || '—').substring(0, 50)}${(r.indicaciones || '').length > 50 ? '...' : ''}</td>
+        <td title="${r.contraindicaciones || ''}">${(r.contraindicaciones || '—').substring(0, 40)}${(r.contraindicaciones || '').length > 40 ? '...' : ''}</td>
+        <td><span class="score-badge ${scoreClass}">${r.similitud_score || 0}%</span></td>
+        <td><span class="estado-badge ${estadoClass}">${r.estado_mapeo || '—'}</span></td>
+      </tr>`;
+    }
+
+    function filterTable() {
+      const q = document.getElementById('tm-search').value.toLowerCase();
+      const filtered = allTMData.filter(r =>
+        (r.descripcion_original || '').toLowerCase().includes(q) ||
+        (r.sal_id || '').toLowerCase().includes(q) ||
+        (r.clave_cnis || '').toLowerCase().includes(q) ||
+        (r.descripcion_cnis || '').toLowerCase().includes(q) ||
+        (r.grupo_terapeutico || '').toLowerCase().includes(q)
+      );
+      renderTablaMaestra(filtered, document.getElementById('tm-agrupar').value);
+    }
+
+    function exportCSV() {
+      if (!allTMData.length) return showToast('No hay datos para exportar', 'error');
+      const headers = ['sal_id','descripcion_original','precio','recetados','clave_cnis','descripcion_cnis','grupo_terapeutico','indicaciones','contraindicaciones','similitud_score','estado_mapeo'];
+      let csv = headers.join(',') + '\n';
+      allTMData.forEach(r => {
+        csv += headers.map(h => `"${(r[h] || '').toString().replace(/"/g, '""')}"`).join(',') + '\n';
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `tabla_maestra_${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+      showToast('📥 CSV descargado');
+    }
+
+    // ---- Revisión Manual ----
+    async function loadRevision(page = 1) {
+      currentPage.rm = page;
+      try {
+        const res = await fetch(`${API_BASE}/revision_manual?page=${page}&limit=20`);
+        const data = await res.json();
+        document.getElementById('rm-pending-count').textContent = data.total || 0;
+        renderRevision(data.data || []);
+        renderPagination('rm', data.total, page, 20);
+      } catch (e) {
+        document.getElementById('rm-list').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)">No hay datos de revisión.</div>';
+      }
+    }
+
+    function renderRevision(items) {
+      const container = document.getElementById('rm-list');
+      if (!items.length) {
+        container.innerHTML = '<div style="text-align:center;padding:60px;color:var(--text-muted)">✅ No hay medicamentos pendientes de revisión.</div>';
+        return;
+      }
+      container.innerHTML = items.map(r => {
+        const scoreClass = (r.similitud_score || 0) >= 60 ? 'score-medium' : 'score-low';
+        return `<div class="review-card" id="review-${r.id_local}">
+          <div class="review-left">
+            <h4>${r.descripcion_original || '—'}</h4>
+            <div class="meta">
+              <span>SAL: ${r.sal_id || '—'}</span>
+              <span>Precio: $${parseFloat(r.precio || 0).toFixed(2)}</span>
+              <span class="score-badge ${scoreClass}">${r.similitud_score || 0}%</span>
+            </div>
+            ${r.descripcion_cnis ? `<div style="margin-top:6px;font-size:12px;color:var(--text-muted)">Sugerencia: <span style="color:var(--cyan)">${r.clave_cnis}</span> — ${r.descripcion_cnis}</div>` : ''}
+          </div>
+          <div class="review-right" style="position:relative">
+            <input type="text" placeholder="Buscar clave CNIS..." oninput="buscarCNIS(this, ${r.id_local})" onfocus="buscarCNIS(this, ${r.id_local})">
+            <div class="suggestions" id="sugg-${r.id_local}"></div>
+            <button class="btn btn-secondary btn-sm" onclick="omitirRevision(${r.id_local})">Omitir</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    let searchTimeout;
+    async function buscarCNIS(input, idLocal) {
+      clearTimeout(searchTimeout);
+      const q = input.value.trim();
+      const sugg = document.getElementById(`sugg-${idLocal}`);
+      if (q.length < 2) { sugg.classList.remove('visible'); return; }
+
+      searchTimeout = setTimeout(async () => {
+        try {
+          const res = await fetch(`${API_BASE}/buscar_cnis?q=${encodeURIComponent(q)}`);
+          const data = await res.json();
+          if (data.results && data.results.length) {
+            sugg.innerHTML = data.results.map(r =>
+              `<div class="suggestion-item" onclick="confirmarMapeo(${idLocal}, '${r.clave_cnis}')">
+                <div class="clave">${r.clave_cnis}</div>
+                <div>${r.descripcion_cnis_limpia}</div>
+                ${r.grupo_terapeutico ? `<div style="font-size:11px;color:var(--text-muted)">${r.grupo_terapeutico}</div>` : ''}
+              </div>`
+            ).join('');
+            sugg.classList.add('visible');
+          } else {
+            sugg.classList.remove('visible');
+          }
+        } catch (e) {}
+      }, 300);
+    }
+
+    async function confirmarMapeo(idLocal, claveCnis) {
+      try {
+        const res = await fetch(`${API_BASE}/revision_manual/${idLocal}?clave_cnis=${encodeURIComponent(claveCnis)}`, { method: 'PATCH' });
+        if (res.ok) {
+          document.getElementById(`review-${idLocal}`).style.display = 'none';
+          showToast(`✅ Mapeado: ${claveCnis}`);
+          loadStats();
+        }
+      } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+      }
+    }
+
+    function omitirRevision(idLocal) {
+      document.getElementById(`review-${idLocal}`).style.opacity = '0.3';
+      document.getElementById(`review-${idLocal}`).style.pointerEvents = 'none';
+    }
+
+    async function aprobarAltos() {
+      try {
+        const res = await fetch(`${API_BASE}/revision_manual?limit=500`);
+        const data = await res.json();
+        const altos = (data.data || []).filter(r => r.similitud_score >= 75 && r.clave_cnis);
+        let count = 0;
+        for (const r of altos) {
+          await fetch(`${API_BASE}/revision_manual/${r.id_local}?clave_cnis=${r.clave_cnis}`, { method: 'PATCH' });
+          count++;
+        }
+        showToast(`✅ ${count} medicamentos aprobados automáticamente`);
+        loadRevision();
+        loadStats();
+      } catch (e) {
+        showToast('Error: ' + e.message, 'error');
+      }
+    }
+
+    // ---- Pagination ----
+    function renderPagination(prefix, total, current, perPage) {
+      const container = document.getElementById(`${prefix}-pagination`);
+      const pages = Math.ceil(total / perPage);
+      if (pages <= 1) { container.innerHTML = ''; return; }
+
+      let html = '';
+      if (current > 1) html += `<button onclick="load${prefix === 'tm' ? 'TablaMaestra' : 'Revision'}(${current - 1})">← Anterior</button>`;
+      for (let i = Math.max(1, current - 2); i <= Math.min(pages, current + 2); i++) {
+        html += `<button class="${i === current ? 'active' : ''}" onclick="load${prefix === 'tm' ? 'TablaMaestra' : 'Revision'}(${i})">${i}</button>`;
+      }
+      if (current < pages) html += `<button onclick="load${prefix === 'tm' ? 'TablaMaestra' : 'Revision'}(${current + 1})">Siguiente →</button>`;
+      container.innerHTML = html;
+    }
+
+    // Close suggestions on click outside
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.review-right')) {
+        document.querySelectorAll('.suggestions').forEach(s => s.classList.remove('visible'));
+      }
+    });
+
+    // ---- Init ----
+    loadStats();
+  </script>
+</body>
+</html>
