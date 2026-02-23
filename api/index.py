@@ -18,9 +18,9 @@ from thefuzz import fuzz, process
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://abaazvcjwzvmwkgrtwee.supabase.co")
-SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "")
-GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://abaazvcjwzvmwkgrtwee.supabase.co").strip()
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "").strip()
 
 SCORE_THRESHOLD = 85  # >= 85 → mapeado_seguro, < 85 → revision_manual
 BATCH_SIZE = 500      # Insert batch size for Vercel timeout safety
