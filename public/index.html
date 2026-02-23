@@ -1270,7 +1270,7 @@
 
         // Step 2: Process in batches (smaller for local due to fuzzy matching)
         let offset = 0;
-        const batchSize = 10;  // Small batches for fuzzy matching
+        const batchSize = 50;  // Fuzzy matching only, no Gemini calls
         const total = uploadData.total_rows;
         let totalMapeados = 0;
         let totalRevision = 0;

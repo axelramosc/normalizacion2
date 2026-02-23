@@ -378,15 +378,14 @@ async def _process_local_batch(sb, df, offset, batch_size, total_rows, clear_dat
                 estado = "mapeado_seguro"
                 mapeado_seguro += 1
             else:
-                gemini_result = await gemini_match(desc_limpia, cnis_descriptions)
-                if gemini_result and gemini_result["match"] in cnis_lookup:
-                    id_cnis = cnis_lookup[gemini_result["match"]]["id_cnis"]
-                    score = gemini_result["score"]
-                    estado = "revision_manual"
-                    revision_manual += 1
-                else:
-                    estado = "revision_manual"
-                    revision_manual += 1
+                # Keep the best fuzzy match info for manual review
+                if score > 30:
+                    id_cnis = cnis_lookup[matched_desc]["id_cnis"]
+                estado = "revision_manual"
+                revision_manual += 1
+        else:
+            estado = "revision_manual"
+            revision_manual += 1
 
         records_to_insert.append({
             "sal_id": sal_id,
