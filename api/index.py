@@ -126,10 +126,16 @@ async def cargar_cnis(file: UploadFile = File(...)):
         raise HTTPException(400, "Solo se aceptan archivos .xlsx, .xls o .csv")
 
     contents = await file.read()
-    if file.filename.endswith(".csv"):
-        df = pd.read_csv(io.BytesIO(contents))
-    else:
-        df = pd.read_excel(io.BytesIO(contents))
+    try:
+        if file.filename.endswith(".csv"):
+            try:
+                df = pd.read_csv(io.BytesIO(contents), encoding="utf-8")
+            except UnicodeDecodeError:
+                df = pd.read_csv(io.BytesIO(contents), encoding="latin-1")
+        else:
+            df = pd.read_excel(io.BytesIO(contents))
+    except Exception as e:
+        raise HTTPException(400, f"Error al procesar el archivo: {str(e)}")
 
     # Normalize column names
     df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
@@ -217,10 +223,16 @@ async def procesar_catalogo(file: UploadFile = File(...)):
         raise HTTPException(400, "Solo se aceptan archivos .xlsx, .xls o .csv")
 
     contents = await file.read()
-    if file.filename.endswith(".csv"):
-        df = pd.read_csv(io.BytesIO(contents))
-    else:
-        df = pd.read_excel(io.BytesIO(contents))
+    try:
+        if file.filename.endswith(".csv"):
+            try:
+                df = pd.read_csv(io.BytesIO(contents), encoding="utf-8")
+            except UnicodeDecodeError:
+                df = pd.read_csv(io.BytesIO(contents), encoding="latin-1")
+        else:
+            df = pd.read_excel(io.BytesIO(contents))
+    except Exception as e:
+        raise HTTPException(400, f"Error al procesar el archivo local: {str(e)}")
     df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
 
     # Detect columns
