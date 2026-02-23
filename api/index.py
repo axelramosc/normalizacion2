@@ -196,33 +196,41 @@ async def procesar_lote(
     type: str = Form("cnis"),     # "cnis" or "local"
     offset: int = Form(0),
     batch_size: int = Form(50),
-    clear_data: bool = Form(False),  # True on first call to clear old data
+    clear_data: str = Form("false"),  # "true" on first call to clear old data
 ):
     """Download file from Storage, process rows [offset:offset+batch_size], insert into DB."""
-    sb = get_sb()
-
-    # Download file from Storage
-    try:
-        file_bytes = sb.storage.from_(STORAGE_BUCKET).download(file_path)
-    except Exception as e:
-        raise HTTPException(400, f"Error al descargar archivo de Storage: {str(e)}")
-
-    # Determine filename from path
-    filename = file_path.split("/")[-1]
+    should_clear = clear_data.lower() in ("true", "1", "yes")
 
     try:
-        df = read_file_from_bytes(file_bytes, filename)
+        sb = get_sb()
+
+        # Download file from Storage
+        try:
+            file_bytes = sb.storage.from_(STORAGE_BUCKET).download(file_path)
+        except Exception as e:
+            raise HTTPException(400, f"Error al descargar archivo de Storage: {str(e)}")
+
+        # Determine filename from path
+        filename = file_path.split("/")[-1]
+
+        try:
+            df = read_file_from_bytes(file_bytes, filename)
+        except Exception as e:
+            raise HTTPException(400, f"Error al procesar archivo: {str(e)}")
+
+        total_rows = len(df)
+
+        if type == "cnis":
+            return await _process_cnis_batch(sb, df, offset, batch_size, total_rows, should_clear)
+        elif type == "local":
+            return await _process_local_batch(sb, df, offset, batch_size, total_rows, should_clear)
+        else:
+            raise HTTPException(400, f"Tipo no válido: {type}. Use 'cnis' o 'local'.")
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(400, f"Error al procesar archivo: {str(e)}")
-
-    total_rows = len(df)
-
-    if type == "cnis":
-        return await _process_cnis_batch(sb, df, offset, batch_size, total_rows, clear_data)
-    elif type == "local":
-        return await _process_local_batch(sb, df, offset, batch_size, total_rows, clear_data)
-    else:
-        raise HTTPException(400, f"Tipo no válido: {type}. Use 'cnis' o 'local'.")
+        logger.error(f"procesar_lote error: {e}", exc_info=True)
+        raise HTTPException(500, f"Error interno: {str(e)}")
 
 
 async def _process_cnis_batch(sb, df, offset, batch_size, total_rows, clear_data):
