@@ -195,9 +195,12 @@ async def cargar_cnis(file: UploadFile = File(...)):
 
     # Clean None/NaN values
     for rec in records:
-        for k, v in rec.items():
-            if pd.isna(v) if isinstance(v, float) else False:
-                rec[k] = None
+        for k, v in list(rec.items()):
+            try:
+                if v is None or pd.isna(v):
+                    rec[k] = None
+            except (TypeError, ValueError):
+                pass  # value is not NaN-checkable, keep as-is
 
     inserted = 0
     for i in range(0, len(records), BATCH_SIZE):
