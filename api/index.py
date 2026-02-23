@@ -70,9 +70,9 @@ _UNIT_MAP = {
 
 def limpiar_descripcion(texto: str) -> str:
     """Normaliza una descripción de medicamento para matching."""
-    if not texto:
+    if pd.isna(texto) or not str(texto).strip():
         return ""
-    t = texto.lower().strip()
+    t = str(texto).lower().strip()
     t = _RE_CLEAN.sub(" ", t)
     # Normalizar unidades
     for original, reemplazo in _UNIT_MAP.items():
