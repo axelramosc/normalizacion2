@@ -58,32 +58,49 @@ def get_sb() -> Client:
 _RE_CLEAN = re.compile(r"[^a-záéíóúñü0-9\s/\.\-\,]", re.IGNORECASE)
 _RE_SPACES = re.compile(r"\s+")
 _UNIT_MAP = {
+    # Unificar todas las abreviaturas a su forma base SNOMED o estándar
     "mgs": "mg", "grs": "g", "gms": "g", "mcgs": "mcg",
-    "mls": "ml", "lts": "l", "ui": "ui", "uis": "ui",
-    "tabletas": "tab", "tableta": "tab", "tabs": "tab",
-    "capsulas": "cap", "capsula": "cap", "caps": "cap",
-    "ampolletas": "amp", "ampolleta": "amp", "amps": "amp",
-    "frasco": "fco", "frascos": "fco",
-    "solucion": "sol", "solución": "sol",
-    "suspension": "susp", "suspensión": "susp",
-    "inyectable": "iny", "inyección": "iny", "inyeccion": "iny",
+    "mls": "ml", "lts": "l", "uis": "ui", 
+    "tab": "tableta", "tabs": "tableta", "tabletas": "tableta",
+    "cap": "capsula", "caps": "capsula", "capsulas": "capsula",
+    "amp": "ampolleta", "amps": "ampolleta", "ampolletas": "ampolleta",
+    "fco": "frasco", "frascos": "frasco", "fcos": "frasco",
+    "sol": "solucion", "solución": "solucion", "soln": "solucion",
+    "susp": "suspension", "suspensión": "suspension",
+    "iny": "inyectable", "inyección": "inyectable", "inyeccion": "inyectable",
+    "cra": "crema", "crm": "crema",
+    "ung": "unguento", "ungüento": "unguento",
+    "pvo": "polvo", "polv": "polvo",
+    "jbe": "jarabe",
+    "gts": "gotas", "got": "gotas",
+    "grg": "gragea", "grageas": "gragea",
+    "pca": "parche",
+    "sup": "supositorio", "supositorios": "supositorio",
+    "ped": "pediatrico", "pediatrica": "pediatrico",
+    "inf": "infantil",
+    "ad": "adulto", "adultos": "adulto",
 }
 
 
 def limpiar_descripcion(texto: str) -> str:
-    """Normaliza una descripción de medicamento para matching."""
+    """Normaliza una descripción quitando puntos, comas, y expandiendo abreviaturas."""
     if pd.isna(texto) or not str(texto).strip():
         return ""
     t = str(texto).lower().strip()
+    # Remover comas, puntos y caracteres especiales que no aportan valor
     t = _RE_CLEAN.sub(" ", t)
+    
+    # Reemplazar abreviaturas por palabras completas basadas en el diccionario
     for original, reemplazo in _UNIT_MAP.items():
+        # \b asegura que solo se modifiquen palabras completas (no "estableta" por tener "tab")
         t = re.sub(rf"\b{original}\b", reemplazo, t)
+        
     t = _RE_SPACES.sub(" ", t).strip()
     return t
 
 
 def normalize_medication(description: str, substance_hint: str = None) -> dict:
-    """Parse a medication description into SNOMED CT components."""
+    """Parse a medication description into SNOMED CT components by systematic removal."""
     result = {
         "sustancia": None,
         "forma_farmaceutica": None,
@@ -93,37 +110,54 @@ def normalize_medication(description: str, substance_hint: str = None) -> dict:
     if not description or pd.isna(description):
         return result
         
-    text = str(description).strip()
+    # Texto limpio expandido sin puntuación
+    text = limpiar_descripcion(description)
+    original_text = text  # Conservamos copia por si queda vacío
     
-    # 1. Forma Farmacéutica
-    lines = [L.strip() for L in text.split('\n') if L.strip()]
-    if lines:
-        forma_raw = lines[0].split(" O ")[0].lower()
-        for orig, rep in _UNIT_MAP.items():
-            forma_raw = re.sub(rf"\b{orig}\b", rep, forma_raw)
-        result["forma_farmaceutica"] = forma_raw.strip()
-
-    # 3. Concentración
-    conc_match = re.search(r"(\d+(?:\.\d+)?\s*(?:mg|g|mcg|ml|l|ui|%)(?:\s*/\s*\d+(?:\.\d+)?\s*(?:mg|g|mcg|ml|l|ui))?)", text, re.IGNORECASE)
+    # 1. Extraer y remover concentración (ej. 150 mg, 5 g/100 ml)
+    conc_match = re.search(r"(\d+(?:\.\d+)?\s*(?:mg|g|mcg|ml|l|ui|%)(?:\s*/\s*\d+(?:\.\d+)?\s*(?:mg|g|mcg|ml|l|ui|%))?)", text, re.IGNORECASE)
     if conc_match:
-        result["concentracion"] = conc_match.group(1).lower().replace(" ", "")
+        c_str = conc_match.group(1)
+        result["concentracion"] = c_str.replace(" ", "")
+        text = text.replace(c_str, "")
 
-    # 1. Sustancia
+    # 2. Extraer y remover forma farmacéutica
+    formas_conocidas = ["tableta", "capsula", "ampolleta", "frasco", "solucion", "suspension", 
+                       "inyectable", "crema", "unguento", "polvo", "jarabe", "gotas", "gragea", 
+                       "parche", "implante", "gel", "locion", "supositorio", "ovulo", "aerosol", "spray", "pomada"]
+    
+    forma_encontrada = None
+    # Buscamos de forma independiente cada palabra
+    for forma in formas_conocidas:
+        if re.search(rf"\b{forma}\b", text):
+            forma_encontrada = forma
+            text = re.sub(rf"\b{forma}s?\b", "", text) # Retiramos plurales por si acaso
+            break
+            
+    if forma_encontrada:
+        result["forma_farmaceutica"] = forma_encontrada
+
+    # 3. Extraer y remover presentación (ej. envase con 30 tabletas)
+    pres_match = re.search(r"(envase con\s+\d+\s+[a-z]+|\b(?:con|caja con)\s+\d+(?:\s+[a-z]+)?\b)", text, re.IGNORECASE)
+    if pres_match:
+        result["presentacion"] = pres_match.group(1).strip()
+        text = text.replace(pres_match.group(1), "")
+
+    # 4. Limpieza final de la sustancia (Lo sobrante es la sustancia activa)
+    # Removemos preposiciones huérfanas o basura residual
+    text = re.sub(r"\b(caja|envase|con|para)\b", "", text)
+    text = _RE_SPACES.sub(" ", text).strip()
+
+    # Si nos dieron la sustancia_hint explícita, priorizamos limpiarla
     if substance_hint and not pd.isna(substance_hint):
         result["sustancia"] = limpiar_descripcion(substance_hint)
     else:
-        match_contiene = re.search(r"contiene:?\s*([a-zA-ZáéíóúñÁÉÍÓÚÑüÜ\s\-\,]+)\s*(?:\d|$)", text, re.IGNORECASE)
-        if match_contiene:
-            result["sustancia"] = limpiar_descripcion(match_contiene.group(1))
-
-    # 4. Presentación
-    pres_match = re.search(r"(envase con\s+\d+\s+[a-z]+)", text, re.IGNORECASE)
-    if pres_match:
-        pres = pres_match.group(1).lower()
-        for orig, rep in _UNIT_MAP.items():
-            pres = re.sub(rf"\b{orig}\b", rep, pres)
-        result["presentacion"] = pres
-
+        # Si no hay hint, usamos el contenido depurado
+        if text:
+            # Quitamos prefijos como "contiene "
+            text = re.sub(r"^contiene\b", "", text).strip()
+            result["sustancia"] = text
+            
     return result
 
 

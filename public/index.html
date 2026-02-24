@@ -128,6 +128,7 @@
       font-weight: 800;
       background: linear-gradient(135deg, var(--cyan), #8B5CF6);
       -webkit-background-clip: text;
+      background-clip: text;
       -webkit-text-fill-color: transparent;
     }
 
@@ -353,6 +354,7 @@
       border-collapse: separate;
       border-spacing: 0;
       font-size: 13px;
+      transform: rotateX(180deg);
     }
 
     .data-table thead th {
@@ -479,6 +481,7 @@
       border: 1px solid var(--border-glass);
       max-height: 65vh;
       overflow-y: auto;
+      transform: rotateX(180deg);
     }
 
     /* Scrollbar styling for horizontal scrolling */
@@ -1406,7 +1409,7 @@
       } catch (e) {
         showToast('❌ Error: ' + e.message, 'error');
       }
-      btn.innerHTML = '🔗 Procesar y Emparejar con CNIS';
+      btn.innerHTML = '🔗 Normalizar y Emparejar';
       btn.disabled = false;
       setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; }, 3000);
     }
@@ -1730,7 +1733,7 @@
               </div>
               <div style="display:flex; gap:6px;">
                 <button class="btn btn-primary btn-sm" onclick="reprocessFromStorage('${f.path}', '${type}')" style="font-size:11px; padding:4px 10px;">
-                  🔄 Re-procesar
+                  ${type === 'cnis' ? '⚙️ Normalizar Catálogo' : '🔄 Normalizar y Emparejar'}
                 </button>
               </div>
             </div>`;
