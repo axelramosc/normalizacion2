@@ -87,6 +87,11 @@ def limpiar_descripcion(texto: str) -> str:
     if pd.isna(texto) or not str(texto).strip():
         return ""
     t = str(texto).lower().strip()
+    
+    # Remover acentos transcribiendo a vocales base
+    t = t.replace('á', 'a').replace('é', 'e').replace('í', 'i').replace('ó', 'o').replace('ú', 'u')
+    t = t.replace('ü', 'u')
+    
     # Remover comas, puntos y caracteres especiales que no aportan valor
     t = _RE_CLEAN.sub(" ", t)
     
@@ -126,16 +131,16 @@ def normalize_medication(description: str, substance_hint: str = None) -> dict:
                        "inyectable", "crema", "unguento", "polvo", "jarabe", "gotas", "gragea", 
                        "parche", "implante", "gel", "locion", "supositorio", "ovulo", "aerosol", "spray", "pomada"]
     
-    forma_encontrada = None
-    # Buscamos de forma independiente cada palabra
+    forma_encontrada = []
+    # Buscamos y retiramos TODAS las formas detectadas para no dejar basura (ej. solucion inyectable)
     for forma in formas_conocidas:
         if re.search(rf"\b{forma}\b", text):
-            forma_encontrada = forma
+            forma_encontrada.append(forma)
             text = re.sub(rf"\b{forma}s?\b", "", text) # Retiramos plurales por si acaso
-            break
             
     if forma_encontrada:
-        result["forma_farmaceutica"] = forma_encontrada
+        # Tomamos la primera dictada como forma principal o las concatenamos
+        result["forma_farmaceutica"] = forma_encontrada[0]
 
     # 3. Extraer y remover presentación (ej. envase con 30 tabletas)
     pres_match = re.search(r"(envase con\s+\d+\s+[a-z]+|\b(?:con|caja con)\s+\d+(?:\s+[a-z]+)?\b)", text, re.IGNORECASE)
