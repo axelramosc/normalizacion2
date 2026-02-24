@@ -82,6 +82,51 @@ def limpiar_descripcion(texto: str) -> str:
     return t
 
 
+def normalize_medication(description: str, substance_hint: str = None) -> dict:
+    """Parse a medication description into SNOMED CT components."""
+    result = {
+        "sustancia": None,
+        "forma_farmaceutica": None,
+        "concentracion": None,
+        "presentacion": None,
+    }
+    if not description or pd.isna(description):
+        return result
+        
+    text = str(description).strip()
+    
+    # 1. Forma Farmacéutica
+    lines = [L.strip() for L in text.split('\n') if L.strip()]
+    if lines:
+        forma_raw = lines[0].split(" O ")[0].lower()
+        for orig, rep in _UNIT_MAP.items():
+            forma_raw = re.sub(rf"\b{orig}\b", rep, forma_raw)
+        result["forma_farmaceutica"] = forma_raw.strip()
+
+    # 3. Concentración
+    conc_match = re.search(r"(\d+(?:\.\d+)?\s*(?:mg|g|mcg|ml|l|ui|%)(?:\s*/\s*\d+(?:\.\d+)?\s*(?:mg|g|mcg|ml|l|ui))?)", text, re.IGNORECASE)
+    if conc_match:
+        result["concentracion"] = conc_match.group(1).lower().replace(" ", "")
+
+    # 1. Sustancia
+    if substance_hint and not pd.isna(substance_hint):
+        result["sustancia"] = limpiar_descripcion(substance_hint)
+    else:
+        match_contiene = re.search(r"contiene:?\s*([a-zA-ZáéíóúñÁÉÍÓÚÑüÜ\s\-\,]+)\s*(?:\d|$)", text, re.IGNORECASE)
+        if match_contiene:
+            result["sustancia"] = limpiar_descripcion(match_contiene.group(1))
+
+    # 4. Presentación
+    pres_match = re.search(r"(envase con\s+\d+\s+[a-z]+)", text, re.IGNORECASE)
+    if pres_match:
+        pres = pres_match.group(1).lower()
+        for orig, rep in _UNIT_MAP.items():
+            pres = re.sub(rf"\b{orig}\b", rep, pres)
+        result["presentacion"] = pres
+
+    return result
+
+
 def read_file_from_bytes(contents: bytes, filename: str) -> pd.DataFrame:
     """Read CSV or Excel from bytes with encoding fallback."""
     if filename.endswith(".csv"):
@@ -251,8 +296,8 @@ async def _process_cnis_batch(sb, df, offset, batch_size, total_rows, clear_data
             col_map[col] = "indicaciones"
         elif "contraindicacion" in col:
             col_map[col] = "contraindicaciones"
-        elif "insumo" in col and "descripcion_cnis_limpia" not in col_map.values():
-            col_map[col] = "descripcion_cnis_limpia"
+        elif "insumo" in col:
+            col_map[col] = "sustancia_hint"
 
     df = df.rename(columns=col_map)
 
@@ -281,11 +326,25 @@ async def _process_cnis_batch(sb, df, offset, batch_size, total_rows, clear_data
     if batch_df.empty:
         return {"status": "complete", "processed": 0, "total": total_unique, "remaining": 0}
 
-    # Clean descriptions
+    # Clean descriptions and parse components
     batch_df = batch_df.copy()
-    batch_df["descripcion_cnis_limpia"] = batch_df["descripcion_cnis_limpia"].apply(
-        lambda x: str(x).strip() if pd.notna(x) else ""
-    )
+    
+    parsed_records = []
+    for _, row in batch_df.iterrows():
+        desc = str(row.get("descripcion_cnis_limpia", "")).strip()
+        hint = row.get("sustancia_hint")
+        parsed = normalize_medication(desc, substance_hint=str(hint) if pd.notna(hint) else None)
+        
+        parsed_records.append({
+            "descripcion_cnis_limpia": desc,
+            "sustancia": parsed["sustancia"],
+            "forma_farmaceutica": parsed["forma_farmaceutica"],
+            "concentracion": parsed["concentracion"],
+            "presentacion": parsed["presentacion"]
+        })
+        
+    for k in ["descripcion_cnis_limpia", "sustancia", "forma_farmaceutica", "concentracion", "presentacion"]:
+        batch_df[k] = [r[k] for r in parsed_records]
 
     # Fill NaN
     for col in ["grupo_terapeutico", "indicaciones", "contraindicaciones"]:
@@ -294,7 +353,11 @@ async def _process_cnis_batch(sb, df, offset, batch_size, total_rows, clear_data
         else:
             batch_df[col] = batch_df[col].where(batch_df[col].notna(), None)
 
-    target_cols = ["clave_cnis", "descripcion_cnis_limpia", "grupo_terapeutico", "indicaciones", "contraindicaciones"]
+    target_cols = [
+        "clave_cnis", "descripcion_cnis_limpia", "grupo_terapeutico", 
+        "indicaciones", "contraindicaciones", "sustancia", "forma_farmaceutica", 
+        "concentracion", "presentacion"
+    ]
     records = batch_df[[c for c in target_cols if c in batch_df.columns]].to_dict("records")
     records = clean_nan(records)
 
@@ -336,7 +399,7 @@ async def _process_local_batch(sb, df, offset, batch_size, total_rows, clear_dat
         sb.table("local_catalogo").delete().neq("id_local", 0).execute()
 
     # Fetch CNIS catalog for matching
-    cnis_resp = sb.table("cnis_catalogo").select("id_cnis, clave_cnis, descripcion_cnis_limpia").execute()
+    cnis_resp = sb.table("cnis_catalogo").select("id_cnis, clave_cnis, descripcion_cnis_limpia, sustancia, forma_farmaceutica, concentracion, presentacion").execute()
     cnis_data = cnis_resp.data
     if not cnis_data:
         raise HTTPException(400, "El catálogo CNIS está vacío. Carga primero el CNIS.")
@@ -360,32 +423,69 @@ async def _process_local_batch(sb, df, offset, batch_size, total_rows, clear_dat
         precio = float(row[precio_col]) if precio_col and pd.notna(row.get(precio_col)) else None
         recetados = int(row[recetados_col]) if recetados_col and pd.notna(row.get(recetados_col)) else None
 
-        # Fuzzy match
-        best_match = process.extractOne(
-            desc_limpia,
-            cnis_descriptions,
-            scorer=fuzz.token_sort_ratio,
-        )
+        # Parse local description
+        parsed_local = normalize_medication(desc_sucia)
 
         id_cnis = None
         score = 0
         estado = "pendiente"
 
-        if best_match:
-            matched_desc, score = best_match[0], best_match[1]
-            if score >= SCORE_THRESHOLD:
-                id_cnis = cnis_lookup[matched_desc]["id_cnis"]
-                estado = "mapeado_seguro"
-                mapeado_seguro += 1
-            else:
-                # Keep the best fuzzy match info for manual review
-                if score > 30:
-                    id_cnis = cnis_lookup[matched_desc]["id_cnis"]
-                estado = "revision_manual"
-                revision_manual += 1
-        else:
+        exact_match = None
+        partial_match_70 = None
+        partial_match_40 = None
+
+        if parsed_local["sustancia"]:
+            for c_row in cnis_data:
+                if c_row["sustancia"] == parsed_local["sustancia"]:
+                    # Exact deterministic match
+                    if (c_row["concentracion"] == parsed_local["concentracion"] and 
+                        c_row["forma_farmaceutica"] == parsed_local["forma_farmaceutica"]):
+                        exact_match = c_row
+                        break
+                    
+                    if c_row["concentracion"] == parsed_local["concentracion"]:
+                        if not partial_match_70: partial_match_70 = c_row
+                    
+                    if not partial_match_40: partial_match_40 = c_row
+
+        if exact_match:
+            id_cnis = exact_match["id_cnis"]
+            score = 100
+            estado = "mapeado_seguro"
+            mapeado_seguro += 1
+        elif partial_match_70:
+            id_cnis = partial_match_70["id_cnis"]
+            score = 70
             estado = "revision_manual"
             revision_manual += 1
+        elif partial_match_40:
+            id_cnis = partial_match_40["id_cnis"]
+            score = 40
+            estado = "revision_manual"
+            revision_manual += 1
+        else:
+            # Fallback to Fuzzy match
+            best_match = process.extractOne(
+                desc_limpia,
+                cnis_descriptions,
+                scorer=fuzz.token_sort_ratio,
+            )
+            if best_match:
+                matched_desc, s_score = best_match[0], best_match[1]
+                if s_score >= SCORE_THRESHOLD:
+                    id_cnis = cnis_lookup[matched_desc]["id_cnis"]
+                    score = s_score
+                    estado = "mapeado_seguro"
+                    mapeado_seguro += 1
+                else:
+                    if s_score > 30:
+                        id_cnis = cnis_lookup[matched_desc]["id_cnis"]
+                        score = s_score
+                    estado = "revision_manual"
+                    revision_manual += 1
+            else:
+                estado = "revision_manual"
+                revision_manual += 1
 
         records_to_insert.append({
             "sal_id": sal_id,
@@ -393,6 +493,10 @@ async def _process_local_batch(sb, df, offset, batch_size, total_rows, clear_dat
             "descripcion_limpia": desc_limpia,
             "precio": precio,
             "recetados": recetados,
+            "sustancia": parsed_local["sustancia"],
+            "forma_farmaceutica": parsed_local["forma_farmaceutica"],
+            "concentracion": parsed_local["concentracion"],
+            "presentacion": parsed_local["presentacion"],
             "id_cnis": id_cnis,
             "similitud_score": score,
             "estado_mapeo": estado,
@@ -414,6 +518,75 @@ async def _process_local_batch(sb, df, offset, batch_size, total_rows, clear_dat
         "mapeado_seguro": mapeado_seguro,
         "revision_manual": revision_manual,
     }
+
+
+# ---------------------------------------------------------------------------
+# GET /api/storage_files — List files in Supabase Storage
+# ---------------------------------------------------------------------------
+@app.get("/api/storage_files")
+async def storage_files(type: str = Query("cnis", description="cnis or local")):
+    """List files in the storage bucket for a given type."""
+    sb = get_sb()
+    try:
+        files = sb.storage.from_(STORAGE_BUCKET).list(type)
+        result = []
+        for f in files:
+            if f.get("name") and not f["name"].startswith("."):
+                result.append({
+                    "name": f["name"],
+                    "size": f.get("metadata", {}).get("size", 0),
+                    "created_at": f.get("created_at", ""),
+                    "updated_at": f.get("updated_at", ""),
+                    "path": f"{type}/{f['name']}",
+                })
+        return {"files": result, "type": type}
+    except Exception as e:
+        logger.warning(f"Error listing storage files: {e}")
+        return {"files": [], "type": type}
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/limpiar_datos — Clear database tables and optionally storage
+# ---------------------------------------------------------------------------
+@app.delete("/api/limpiar_datos")
+async def limpiar_datos(
+    type: str = Query("all", description="cnis, local, or all"),
+    clear_storage: bool = Query(False, description="Also delete files from storage"),
+):
+    """Clear database tables and optionally storage files."""
+    sb = get_sb()
+    deleted = {"cnis": 0, "local": 0, "storage_cnis": 0, "storage_local": 0}
+
+    try:
+        if type in ("cnis", "all"):
+            resp = sb.table("cnis_catalogo").delete().neq("id_cnis", 0).execute()
+            deleted["cnis"] = len(resp.data) if resp.data else 0
+            if clear_storage:
+                try:
+                    files = sb.storage.from_(STORAGE_BUCKET).list("cnis")
+                    paths = [f"cnis/{f['name']}" for f in files if f.get("name") and not f["name"].startswith(".")]
+                    if paths:
+                        sb.storage.from_(STORAGE_BUCKET).remove(paths)
+                        deleted["storage_cnis"] = len(paths)
+                except Exception as e:
+                    logger.warning(f"Error clearing CNIS storage: {e}")
+
+        if type in ("local", "all"):
+            resp = sb.table("local_catalogo").delete().neq("id_local", 0).execute()
+            deleted["local"] = len(resp.data) if resp.data else 0
+            if clear_storage:
+                try:
+                    files = sb.storage.from_(STORAGE_BUCKET).list("local")
+                    paths = [f"local/{f['name']}" for f in files if f.get("name") and not f["name"].startswith(".")]
+                    if paths:
+                        sb.storage.from_(STORAGE_BUCKET).remove(paths)
+                        deleted["storage_local"] = len(paths)
+                except Exception as e:
+                    logger.warning(f"Error clearing local storage: {e}")
+
+        return {"status": "ok", "deleted": deleted, "type": type}
+    except Exception as e:
+        raise HTTPException(500, f"Error al limpiar datos: {str(e)}")
 
 
 # ---------------------------------------------------------------------------

@@ -899,6 +899,28 @@
           </div>
         </div>
 
+        <!-- Archivos en Storage -->
+        <div class="glass-card" style="margin-top: 20px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
+            <h3 style="margin:0; color:var(--text-primary); font-size:16px;">📁 Archivos en Storage (CNIS)</h3>
+            <button class="btn btn-secondary btn-sm" onclick="loadStorageFiles('cnis')">🔄 Refrescar</button>
+          </div>
+          <div id="cnis-storage-list" style="color: var(--text-muted); font-size: 13px;">
+            Cargando...
+          </div>
+        </div>
+
+        <!-- Archivos en Storage (Local) -->
+        <div class="glass-card" style="margin-top: 20px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
+            <h3 style="margin:0; color:var(--text-primary); font-size:16px;">📁 Archivos en Storage (Local)</h3>
+            <button class="btn btn-secondary btn-sm" onclick="loadStorageFiles('local')">🔄 Refrescar</button>
+          </div>
+          <div id="local-storage-list" style="color: var(--text-muted); font-size: 13px;">
+            Cargando...
+          </div>
+        </div>
+
         <div class="stats-grid" id="cnis-stats">
           <div class="stat-card">
             <div class="label">Claves Cargadas</div>
@@ -911,6 +933,29 @@
           <div class="stat-card">
             <div class="label">Estado</div>
             <div class="value" id="stat-cnis-status" style="font-size:16px">Sin datos</div>
+          </div>
+        </div>
+
+        <!-- Limpiar Base de Datos -->
+        <div class="glass-card" style="margin-top: 20px; border: 1px solid rgba(239, 68, 68, 0.3);">
+          <h3 style="margin:0 0 8px 0; color: var(--text-primary); font-size: 16px;">⚠️ Zona de Limpieza</h3>
+          <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
+            Elimina registros de la base de datos para evitar duplicados antes de un nuevo cruce.
+            Los archivos del Storage se pueden conservar o eliminar.
+          </p>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button class="btn btn-secondary btn-sm" onclick="showCleanConfirm('cnis')"
+              style="border-color: rgba(239, 68, 68, 0.4); color: #ef4444;">
+              🧹 Limpiar CNIS
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="showCleanConfirm('local')"
+              style="border-color: rgba(239, 68, 68, 0.4); color: #ef4444;">
+              🧹 Limpiar Local
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="showCleanConfirm('all')"
+              style="border-color: rgba(239, 68, 68, 0.6); color: #ef4444; font-weight: 700;">
+              🗑️ Limpiar Todo
+            </button>
           </div>
         </div>
       </section>
@@ -1013,7 +1058,7 @@
           </div>
         </div>
 
-        <div class="glass-card" style="padding:0; overflow:hidden">
+        <div class="glass-card" style="padding:0;">
           <div class="table-wrapper">
             <table class="data-table" id="tabla-maestra">
               <thead>
@@ -1021,20 +1066,21 @@
                   <th onclick="sortTable('sal_id')" style="cursor:pointer" title="Ordenar por SAL ID">SAL ID ↕️</th>
                   <th onclick="sortTable('descripcion_original')" style="cursor:pointer"
                     title="Ordenar por Descripción Original">Descripción Original ↕️</th>
-                  <th onclick="sortTable('precio')" style="cursor:pointer" title="Ordenar por Precio">Precio ↕️</th>
-                  <th onclick="sortTable('recetados')" style="cursor:pointer" title="Ordenar por Recetados">Recetados ↕️
+                  <th onclick="sortTable('sustancia_local')" style="cursor:pointer" title="Ordenar por Sustancia">
+                    Sustancia ↕️</th>
+                  <th onclick="sortTable('forma_local')" style="cursor:pointer" title="Ordenar por Forma">Forma Farm. ↕️
                   </th>
+                  <th onclick="sortTable('concentracion_local')" style="cursor:pointer"
+                    title="Ordenar por Concentración">Concentración ↕️</th>
+                  <th onclick="sortTable('precio')" style="cursor:pointer" title="Ordenar por Precio">Precio ↕️</th>
                   <th onclick="sortTable('clave_cnis')" style="cursor:pointer" title="Ordenar por Clave CNIS">Clave CNIS
                     ↕️</th>
                   <th onclick="sortTable('descripcion_cnis')" style="cursor:pointer"
                     title="Ordenar por Descripción CNIS">Descripción CNIS ↕️</th>
                   <th onclick="sortTable('grupo_terapeutico')" style="cursor:pointer"
                     title="Ordenar por Grupo Terapéutico">Grupo Terapéutico ↕️</th>
-                  <th onclick="sortTable('indicaciones')" style="cursor:pointer" title="Ordenar por Indicaciones">
-                    Indicaciones ↕️</th>
-                  <th onclick="sortTable('contraindicaciones')" style="cursor:pointer"
-                    title="Ordenar por Contraindicaciones">Contraindicaciones ↕️</th>
-                  <th onclick="sortTable('similitud_score')" style="cursor:pointer" title="Ordenar por Score">Score ↕️
+                  <th onclick="sortTable('similitud_score')" style="cursor:pointer" title="Ordenar por Match Score">
+                    Match Score ↕️
                   </th>
                   <th onclick="sortTable('estado_mapeo')" style="cursor:pointer" title="Ordenar por Estado">Estado ↕️
                   </th>
@@ -1226,6 +1272,7 @@
             fill.style.width = '100%';
             showToast(`✅ CNIS cargado: ${batchData.processed} claves`, 'success');
             loadStats();
+            loadStorageFiles('cnis');
             break;
           }
           offset = batchData.processed;
@@ -1351,6 +1398,7 @@
             document.getElementById('stat-local-status').textContent = '✅ Cargado';
             showToast(`✅ Procesados: ${batchData.processed} | Mapeados: ${totalMapeados} | Revisión: ${totalRevision}`, 'success');
             loadStats();
+            loadStorageFiles('local');
             break;
           }
           offset = batchData.processed;
@@ -1429,13 +1477,13 @@
       return `<tr class="${extraClass}">
         <td>${r.sal_id || '—'}</td>
         <td title="${r.descripcion_original || ''}">${r.descripcion_original || '—'}</td>
+        <td title="${r.sustancia_local || ''}">${(r.sustancia_local || '—').substring(0, 30)}${(r.sustancia_local || '').length > 30 ? '...' : ''}</td>
+        <td>${r.forma_local || '—'}</td>
+        <td style="font-weight:600; color:var(--text-primary);">${r.concentracion_local || '—'}</td>
         <td>$${parseFloat(r.precio || 0).toFixed(2)}</td>
-        <td>${r.recetados || '—'}</td>
         <td style="font-weight:600">${claveLink}</td>
-        <td title="${r.descripcion_cnis || ''}">${r.descripcion_cnis || '—'}</td>
-        <td>${r.grupo_terapeutico || '—'}</td>
-        <td title="${r.indicaciones || ''}">${(r.indicaciones || '—').substring(0, 50)}${(r.indicaciones || '').length > 50 ? '...' : ''}</td>
-        <td title="${r.contraindicaciones || ''}">${(r.contraindicaciones || '—').substring(0, 40)}${(r.contraindicaciones || '').length > 40 ? '...' : ''}</td>
+        <td title="${r.descripcion_cnis || ''}">${(r.descripcion_cnis || '—').substring(0, 30)}${(r.descripcion_cnis || '').length > 30 ? '...' : ''}</td>
+        <td title="${r.grupo_terapeutico || ''}">${(r.grupo_terapeutico || '—').substring(0, 30)}${(r.grupo_terapeutico || '').length > 30 ? '...' : ''}</td>
         <td><span class="score-badge ${scoreClass}">${r.similitud_score || 0}%</span></td>
         <td><span class="estado-badge ${estadoClass}">${r.estado_mapeo || '—'}</span></td>
       </tr>`;
@@ -1491,7 +1539,7 @@
 
     function exportCSV() {
       if (!allTMData.length) return showToast('No hay datos para exportar', 'error');
-      const headers = ['sal_id', 'descripcion_original', 'precio', 'recetados', 'clave_cnis', 'descripcion_cnis', 'grupo_terapeutico', 'indicaciones', 'contraindicaciones', 'similitud_score', 'estado_mapeo'];
+      const headers = ['sal_id', 'descripcion_original', 'sustancia_local', 'forma_local', 'concentracion_local', 'precio', 'recetados', 'clave_cnis', 'descripcion_cnis', 'grupo_terapeutico', 'similitud_score', 'estado_mapeo'];
       let csv = headers.join(',') + '\n';
       allTMData.forEach(r => {
         csv += headers.map(h => `"${(r[h] || '').toString().replace(/"/g, '""')}"`).join(',') + '\n';
@@ -1506,7 +1554,7 @@
 
     function exportXML() {
       if (!allTMData.length) return showToast('No hay datos para exportar', 'error');
-      const headers = ['sal_id', 'descripcion_original', 'precio', 'recetados', 'clave_cnis', 'descripcion_cnis', 'grupo_terapeutico', 'indicaciones', 'contraindicaciones', 'similitud_score', 'estado_mapeo'];
+      const headers = ['sal_id', 'descripcion_original', 'sustancia_local', 'forma_local', 'concentracion_local', 'precio', 'recetados', 'clave_cnis', 'descripcion_cnis', 'grupo_terapeutico', 'similitud_score', 'estado_mapeo'];
 
       let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<medicamentos>\n';
       allTMData.forEach(r => {
@@ -1653,8 +1701,154 @@
       }
     });
 
+    // ---- Storage Files ----
+    async function loadStorageFiles(type) {
+      const containerId = `${type}-storage-list`;
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.innerHTML = '<span style="color:var(--text-muted)">Cargando...</span>';
+
+      try {
+        const res = await fetch(`${API_BASE}/storage_files?type=${type}`);
+        const data = await res.json();
+        const files = data.files || [];
+
+        if (!files.length) {
+          container.innerHTML = '<span style="color:var(--text-muted)">No hay archivos subidos.</span>';
+          return;
+        }
+
+        let html = '<div style="display:flex; flex-direction:column; gap:8px;">';
+        files.forEach(f => {
+          const sizeKB = (f.size / 1024).toFixed(1);
+          const date = f.created_at ? new Date(f.created_at).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+          html += `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:rgba(6,182,212,0.06); border-radius:8px; border:1px solid var(--border-glass);">
+              <div style="display:flex; flex-direction:column; gap:2px;">
+                <span style="color:var(--text-primary); font-weight:600; font-size:13px;">📄 ${f.name}</span>
+                <span style="color:var(--text-muted); font-size:11px;">${sizeKB} KB · Subido: ${date}</span>
+              </div>
+              <div style="display:flex; gap:6px;">
+                <button class="btn btn-primary btn-sm" onclick="reprocessFromStorage('${f.path}', '${type}')" style="font-size:11px; padding:4px 10px;">
+                  🔄 Re-procesar
+                </button>
+              </div>
+            </div>`;
+        });
+        html += '</div>';
+        container.innerHTML = html;
+      } catch (e) {
+        container.innerHTML = '<span style="color:#ef4444">Error cargando archivos</span>';
+      }
+    }
+
+    async function reprocessFromStorage(filePath, type) {
+      if (!confirm(`¿Re-procesar "${filePath}"? Esto limpiará los datos anteriores de ${type === 'cnis' ? 'CNIS' : 'Local'} y reprocesará.`)) return;
+
+      const progressId = type === 'cnis' ? 'cnis' : 'local';
+      const progress = document.getElementById(`${progressId}-progress`);
+      const fill = document.getElementById(`${progressId}-progress-fill`);
+      if (progress) { progress.style.display = 'block'; fill.style.width = '10%'; }
+
+      try {
+        let offset = 0;
+        const batchSize = 200;
+        let firstBatch = true;
+
+        while (true) {
+          const batchForm = new FormData();
+          batchForm.append('file_path', filePath);
+          batchForm.append('type', type);
+          batchForm.append('offset', offset.toString());
+          batchForm.append('batch_size', batchSize.toString());
+          if (firstBatch) batchForm.append('clear_data', 'true');
+          firstBatch = false;
+
+          const batchRes = await fetch(API_BASE + '/procesar_lote', { method: 'POST', body: batchForm });
+          if (!batchRes.ok) {
+            const err = await batchRes.json().catch(() => ({ detail: 'Error' }));
+            showToast(`❌ Error: ${err.detail || 'Error desconocido'}`, 'error');
+            break;
+          }
+          const batchData = await batchRes.json();
+          if (fill) {
+            const pct = Math.min(95, 10 + (batchData.processed / Math.max(1, batchData.total)) * 85);
+            fill.style.width = pct + '%';
+          }
+
+          if (batchData.status === 'complete' || batchData.remaining === 0) {
+            if (fill) fill.style.width = '100%';
+            showToast(`✅ Re-procesado: ${batchData.processed} registros (${type.toUpperCase()})`, 'success');
+            loadStats();
+            break;
+          }
+          offset = batchData.processed;
+        }
+      } catch (e) {
+        showToast('❌ Error: ' + e.message, 'error');
+      }
+      if (progress) setTimeout(() => { progress.style.display = 'none'; fill.style.width = '0%'; }, 3000);
+    }
+
+    // ---- Limpieza de datos ----
+    function showCleanConfirm(type) {
+      const labels = { cnis: 'catálogo CNIS', local: 'catálogo Local', all: 'TODOS los datos (CNIS + Local)' };
+      const label = labels[type] || type;
+
+      // Create modal
+      const overlay = document.createElement('div');
+      overlay.id = 'clean-modal-overlay';
+      overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:flex;justify-content:center;align-items:center;backdrop-filter:blur(4px);';
+
+      overlay.innerHTML = `
+        <div style="background:var(--bg-card);border:1px solid var(--border-glass);border-radius:16px;padding:32px;max-width:440px;width:90%;text-align:center;">
+          <div style="font-size:48px;margin-bottom:16px;">⚠️</div>
+          <h3 style="color:var(--text-primary);margin:0 0 8px 0;">¿Limpiar ${label}?</h3>
+          <p style="color:var(--text-muted);font-size:13px;margin-bottom:8px;">
+            Esto eliminará todos los registros de la base de datos. Esta acción no se puede deshacer.
+          </p>
+          <label style="display:flex;align-items:center;justify-content:center;gap:8px;margin:16px 0;color:var(--text-secondary);font-size:13px;cursor:pointer;">
+            <input type="checkbox" id="clean-storage-check"> También eliminar archivos del Storage
+          </label>
+          <div style="display:flex;gap:10px;justify-content:center;margin-top:20px;">
+            <button class="btn btn-secondary" onclick="document.getElementById('clean-modal-overlay').remove()" style="padding:10px 24px;">
+              Cancelar
+            </button>
+            <button class="btn btn-primary" onclick="executeClean('${type}')" style="padding:10px 24px;background:linear-gradient(135deg,#ef4444,#dc2626);">
+              🗑️ Confirmar Limpieza
+            </button>
+          </div>
+        </div>`;
+
+      document.body.appendChild(overlay);
+    }
+
+    async function executeClean(type) {
+      const clearStorage = document.getElementById('clean-storage-check')?.checked || false;
+      const modal = document.getElementById('clean-modal-overlay');
+      if (modal) modal.remove();
+
+      try {
+        const res = await fetch(`${API_BASE}/limpiar_datos?type=${type}&clear_storage=${clearStorage}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.status === 'ok') {
+          const d = data.deleted;
+          showToast(`🧹 Limpieza completada: CNIS=${d.cnis}, Local=${d.local}${clearStorage ? `, Storage eliminados` : ''}`, 'success');
+          loadStats();
+          loadStorageFiles('cnis');
+          loadStorageFiles('local');
+        } else {
+          showToast('❌ Error al limpiar', 'error');
+        }
+      } catch (e) {
+        showToast('❌ Error: ' + e.message, 'error');
+      }
+    }
+
     // ---- Init ----
     loadStats();
+    loadStorageFiles('cnis');
+    loadStorageFiles('local');
   </script>
 </body>
 
