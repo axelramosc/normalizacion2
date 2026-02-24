@@ -146,8 +146,10 @@ def normalize_medication(description: str, substance_hint: str = None) -> dict:
     # 4. Limpieza final de la sustancia (Lo sobrante es la sustancia activa)
     # Removemos preposiciones huérfanas o basura residual
     text = re.sub(r"\b(caja|envase|con|para)\b", "", text)
-    text = re.sub(r"[,\.\-]+(?=\s|$)", " ", text) # remove punctuation at end of words
-    text = re.sub(r"^\s*[,\.\-]+", " ", text) # remove punctuation at start
+    # Remove loose numbers, slashes, and periods like "1.5/", " . " which are leftovers from concentration
+    text = re.sub(r"\b\d+(?:\.\d+)?(?:/|\\s*/\\s*)\b", "", text)
+    text = re.sub(r"[,\.\-/]+(?=\s|$)", " ", text) # remove punctuation at end of words
+    text = re.sub(r"^\s*[,\.\-/]+", " ", text) # remove punctuation at start
     text = _RE_SPACES.sub(" ", text).strip()
 
     # Si nos dieron la sustancia_hint explícita, priorizamos limpiarla
