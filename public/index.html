@@ -483,6 +483,27 @@
       overflow-y: auto;
     }
 
+    /* Scrollbar styling for horizontal scrolling */
+    .table-wrapper::-webkit-scrollbar {
+      height: 12px;
+      width: 12px;
+    }
+
+    .table-wrapper::-webkit-scrollbar-track {
+      background: var(--bg-card);
+      border-radius: 6px;
+    }
+
+    .table-wrapper::-webkit-scrollbar-thumb {
+      background: var(--cyan-dim);
+      border-radius: 6px;
+      border: 2px solid var(--bg-card);
+    }
+
+    .table-wrapper::-webkit-scrollbar-thumb:hover {
+      background: var(--cyan);
+    }
+
     /* Review cards */
     .review-card {
       background: var(--bg-card);
@@ -952,16 +973,25 @@
       <section class="page" id="page-tabla-maestra">
         <div class="topbar">
           <h2>Tabla Maestra</h2>
-          <div class="topbar-stats">
-            <div class="stat-pill">
-              <div class="dot" style="background:var(--cyan)"></div> Total: <strong id="tm-total">0</strong>
-            </div>
-            <div class="stat-pill">
-              <div class="dot" style="background:var(--green)"></div> Mapeados: <strong id="tm-mapeados">0</strong>
-            </div>
-            <div class="stat-pill">
-              <div class="dot" style="background:var(--amber)"></div> Revisión: <strong id="tm-revision">0</strong>
-            </div>
+        </div>
+
+        <div class="stats-grid" style="margin-top: 0; margin-bottom: 24px;">
+          <div class="stat-card">
+            <div class="label">Total Medicamentos</div>
+            <div class="value cyan" id="tm-total">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Mapeo Seguro</div>
+            <div class="value green" id="tm-mapeados">0</div>
+          </div>
+          <div class="stat-card">
+            <div class="label">Pendiente Revisión</div>
+            <div class="value amber" id="tm-revision">0</div>
+          </div>
+          <div class="stat-card"
+            style="display: flex; flex-direction: column; justify-content: center; align-items: center;">
+            <div class="label">Tasa de Éxito</div>
+            <div class="value" id="tm-tasa-exito" style="font-size: 24px;">0%</div>
           </div>
         </div>
 
@@ -978,10 +1008,10 @@
             <option value="pendiente">Pendiente</option>
           </select>
           <input type="text" id="tm-search" placeholder="🔎 Buscar medicamento..." oninput="filterTable()">
-          <div style="margin-left:auto">
-            <button class="btn btn-secondary btn-sm" onclick="exportCSV()">📥 Exportar CSV</button>
-            <button class="btn btn-primary btn-sm" onclick="loadTablaMaestra()" style="margin-left:8px">🔄
-              Actualizar</button>
+          <div style="margin-left:auto; display: flex; gap: 8px;">
+            <button class="btn btn-secondary btn-sm" onclick="exportCSV()">📥 .CSV</button>
+            <button class="btn btn-secondary btn-sm" onclick="exportXML()">📥 .XML</button>
+            <button class="btn btn-primary btn-sm" onclick="loadTablaMaestra()">🔄 Actualizar</button>
           </div>
         </div>
 
@@ -990,17 +1020,26 @@
             <table class="data-table" id="tabla-maestra">
               <thead>
                 <tr>
-                  <th>SAL ID</th>
-                  <th>Descripción Original</th>
-                  <th>Precio</th>
-                  <th>Recetados</th>
-                  <th>Clave CNIS</th>
-                  <th>Descripción CNIS</th>
-                  <th>Grupo Terapéutico</th>
-                  <th>Indicaciones</th>
-                  <th>Contraindicaciones</th>
-                  <th>Score</th>
-                  <th>Estado</th>
+                  <th onclick="sortTable('sal_id')" style="cursor:pointer" title="Ordenar por SAL ID">SAL ID ↕️</th>
+                  <th onclick="sortTable('descripcion_original')" style="cursor:pointer"
+                    title="Ordenar por Descripción Original">Descripción Original ↕️</th>
+                  <th onclick="sortTable('precio')" style="cursor:pointer" title="Ordenar por Precio">Precio ↕️</th>
+                  <th onclick="sortTable('recetados')" style="cursor:pointer" title="Ordenar por Recetados">Recetados ↕️
+                  </th>
+                  <th onclick="sortTable('clave_cnis')" style="cursor:pointer" title="Ordenar por Clave CNIS">Clave CNIS
+                    ↕️</th>
+                  <th onclick="sortTable('descripcion_cnis')" style="cursor:pointer"
+                    title="Ordenar por Descripción CNIS">Descripción CNIS ↕️</th>
+                  <th onclick="sortTable('grupo_terapeutico')" style="cursor:pointer"
+                    title="Ordenar por Grupo Terapéutico">Grupo Terapéutico ↕️</th>
+                  <th onclick="sortTable('indicaciones')" style="cursor:pointer" title="Ordenar por Indicaciones">
+                    Indicaciones ↕️</th>
+                  <th onclick="sortTable('contraindicaciones')" style="cursor:pointer"
+                    title="Ordenar por Contraindicaciones">Contraindicaciones ↕️</th>
+                  <th onclick="sortTable('similitud_score')" style="cursor:pointer" title="Ordenar por Score">Score ↕️
+                  </th>
+                  <th onclick="sortTable('estado_mapeo')" style="cursor:pointer" title="Ordenar por Estado">Estado ↕️
+                  </th>
                 </tr>
               </thead>
               <tbody id="tm-body"></tbody>
@@ -1096,6 +1135,13 @@
         document.getElementById('tm-total').textContent = data.local_total || 0;
         document.getElementById('tm-mapeados').textContent = data.mapeado_seguro || 0;
         document.getElementById('tm-revision').textContent = data.revision_manual || 0;
+
+        const total = data.local_total || 0;
+        const mapeados = data.mapeado_seguro || 0;
+        const tasa = total > 0 ? ((mapeados / total) * 100).toFixed(1) : 0;
+        if (document.getElementById('tm-tasa-exito')) {
+          document.getElementById('tm-tasa-exito').textContent = `${tasa}%`;
+        }
       } catch (e) {
         console.log('Stats not available yet');
       }
@@ -1332,7 +1378,7 @@
         const res = await fetch(url);
         const data = await res.json();
         allTMData = data.data || [];
-        renderTablaMaestra(allTMData, agrupar);
+        filterTable(); // Re-applies filters and sorts to render table
         renderPagination('tm', data.total, page, 100);
         loadStats();
       } catch (e) {
@@ -1376,12 +1422,18 @@
     function renderRow(r, extraClass = '') {
       const scoreClass = (r.similitud_score || 0) >= 85 ? 'score-high' : (r.similitud_score || 0) >= 60 ? 'score-medium' : 'score-low';
       const estadoClass = r.estado_mapeo === 'mapeado_seguro' ? 'estado-mapeado' : r.estado_mapeo === 'revision_manual' ? 'estado-revision' : 'estado-pendiente';
+
+      let claveLink = '—';
+      if (r.clave_cnis) {
+        claveLink = `<a href="https://www.google.com/search?q=${encodeURIComponent('clave cnis ' + r.clave_cnis)}" target="_blank" style="color:var(--cyan);text-decoration:underline;">${r.clave_cnis}</a>`;
+      }
+
       return `<tr class="${extraClass}">
         <td>${r.sal_id || '—'}</td>
         <td title="${r.descripcion_original || ''}">${r.descripcion_original || '—'}</td>
         <td>$${parseFloat(r.precio || 0).toFixed(2)}</td>
         <td>${r.recetados || '—'}</td>
-        <td style="color:var(--cyan);font-weight:600">${r.clave_cnis || '—'}</td>
+        <td style="font-weight:600">${claveLink}</td>
         <td title="${r.descripcion_cnis || ''}">${r.descripcion_cnis || '—'}</td>
         <td>${r.grupo_terapeutico || '—'}</td>
         <td title="${r.indicaciones || ''}">${(r.indicaciones || '—').substring(0, 50)}${(r.indicaciones || '').length > 50 ? '...' : ''}</td>
@@ -1391,15 +1443,51 @@
       </tr>`;
     }
 
+    let sortState = { column: null, direction: 1 };
+
+    function sortTable(column) {
+      if (sortState.column === column) {
+        sortState.direction *= -1;
+      } else {
+        sortState.column = column;
+        sortState.direction = 1;
+      }
+      filterTable();
+    }
+
     function filterTable() {
       const q = document.getElementById('tm-search').value.toLowerCase();
-      const filtered = allTMData.filter(r =>
-        (r.descripcion_original || '').toLowerCase().includes(q) ||
-        (r.sal_id || '').toLowerCase().includes(q) ||
-        (r.clave_cnis || '').toLowerCase().includes(q) ||
-        (r.descripcion_cnis || '').toLowerCase().includes(q) ||
-        (r.grupo_terapeutico || '').toLowerCase().includes(q)
-      );
+      let filtered = [...allTMData];
+
+      if (q) {
+        filtered = filtered.filter(r =>
+          (r.descripcion_original || '').toLowerCase().includes(q) ||
+          (r.sal_id || '').toLowerCase().includes(q) ||
+          (r.clave_cnis || '').toLowerCase().includes(q) ||
+          (r.descripcion_cnis || '').toLowerCase().includes(q) ||
+          (r.grupo_terapeutico || '').toLowerCase().includes(q)
+        );
+      }
+
+      if (sortState.column) {
+        filtered.sort((a, b) => {
+          let valA = a[sortState.column] || '';
+          let valB = b[sortState.column] || '';
+
+          if (typeof valA === 'string') valA = valA.toLowerCase();
+          if (typeof valB === 'string') valB = valB.toLowerCase();
+
+          if (!isNaN(parseFloat(valA)) && !isNaN(parseFloat(valB))) {
+            valA = parseFloat(valA);
+            valB = parseFloat(valB);
+          }
+
+          if (valA < valB) return -1 * sortState.direction;
+          if (valA > valB) return 1 * sortState.direction;
+          return 0;
+        });
+      }
+
       renderTablaMaestra(filtered, document.getElementById('tm-agrupar').value);
     }
 
@@ -1410,12 +1498,35 @@
       allTMData.forEach(r => {
         csv += headers.map(h => `"${(r[h] || '').toString().replace(/"/g, '""')}"`).join(',') + '\n';
       });
-      const blob = new Blob([csv], { type: 'text/csv' });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = `tabla_maestra_${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
-      showToast('📥 CSV descargado');
+      showToast('📥 CSV descargado', 'success');
+    }
+
+    function exportXML() {
+      if (!allTMData.length) return showToast('No hay datos para exportar', 'error');
+      const headers = ['sal_id', 'descripcion_original', 'precio', 'recetados', 'clave_cnis', 'descripcion_cnis', 'grupo_terapeutico', 'indicaciones', 'contraindicaciones', 'similitud_score', 'estado_mapeo'];
+
+      let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<medicamentos>\n';
+      allTMData.forEach(r => {
+        xml += '  <medicamento>\n';
+        headers.forEach(h => {
+          const val = (r[h] || '').toString().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+          xml += `    <${h}>${val}</${h}>\n`;
+        });
+        xml += '  </medicamento>\n';
+      });
+      xml += '</medicamentos>';
+
+      const blob = new Blob([xml], { type: 'application/xml;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `tabla_maestra_${new Date().toISOString().slice(0, 10)}.xml`;
+      a.click();
+      showToast('📥 XML descargado', 'success');
     }
 
     // ---- Revisión Manual ----
