@@ -1078,7 +1078,7 @@
                   <th onclick="sortTable('precio')" style="cursor:pointer" title="Ordenar por Precio">Precio ↕️</th>
                   <th onclick="sortTable('clave_cnis')" style="cursor:pointer" title="Ordenar por Clave CNIS">Clave CNIS
                     ↕️</th>
-                  <th onclick="sortTable('descripcion_cnis')" style="cursor:pointer"
+                  <th onclick="sortTable('descripcion_cnis_limpia')" style="cursor:pointer"
                     title="Ordenar por Descripción CNIS">Descripción CNIS ↕️</th>
                   <th onclick="sortTable('grupo_terapeutico')" style="cursor:pointer"
                     title="Ordenar por Grupo Terapéutico">Grupo Terapéutico ↕️</th>
@@ -1498,7 +1498,7 @@
         <td style="font-weight:600; color:var(--text-primary);">${r.concentracion_local || '—'}</td>
         <td>$${parseFloat(r.precio || 0).toFixed(2)}</td>
         <td style="font-weight:600">${claveLink}</td>
-        <td title="${r.descripcion_cnis || ''}">${(r.descripcion_cnis || '—').substring(0, 30)}${(r.descripcion_cnis || '').length > 30 ? '...' : ''}</td>
+        <td title="${r.descripcion_cnis_limpia || r.descripcion_cnis || ''}">${(r.descripcion_cnis_limpia || r.descripcion_cnis || '—').substring(0, 30)}${(r.descripcion_cnis_limpia || r.descripcion_cnis || '').length > 30 ? '...' : ''}</td>
         <td title="${r.grupo_terapeutico || ''}">${(r.grupo_terapeutico || '—').substring(0, 30)}${(r.grupo_terapeutico || '').length > 30 ? '...' : ''}</td>
         <td><span class="score-badge ${scoreClass}">${r.similitud_score || 0}%</span></td>
         <td><span class="estado-badge ${estadoClass}">${r.estado_mapeo || '—'}</span></td>
@@ -1526,7 +1526,7 @@
           (r.descripcion_original || '').toLowerCase().includes(q) ||
           (r.sal_id || '').toLowerCase().includes(q) ||
           (r.clave_cnis || '').toLowerCase().includes(q) ||
-          (r.descripcion_cnis || '').toLowerCase().includes(q) ||
+          (r.descripcion_cnis_limpia || r.descripcion_cnis || '').toLowerCase().includes(q) ||
           (r.grupo_terapeutico || '').toLowerCase().includes(q)
         );
       }
@@ -1555,7 +1555,7 @@
 
     function exportCSV() {
       if (!allTMData.length) return showToast('No hay datos para exportar', 'error');
-      const headers = ['sal_id', 'descripcion_original', 'sustancia_local', 'forma_local', 'concentracion_local', 'precio', 'recetados', 'clave_cnis', 'descripcion_cnis', 'grupo_terapeutico', 'similitud_score', 'estado_mapeo'];
+      const headers = ['sal_id', 'descripcion_original', 'sustancia_local', 'forma_local', 'concentracion_local', 'precio', 'recetados', 'clave_cnis', 'descripcion_cnis_limpia', 'grupo_terapeutico', 'similitud_score', 'estado_mapeo'];
       let csv = headers.join(',') + '\n';
       allTMData.forEach(r => {
         csv += headers.map(h => `"${(r[h] || '').toString().replace(/"/g, '""')}"`).join(',') + '\n';
@@ -1570,7 +1570,7 @@
 
     function exportXML() {
       if (!allTMData.length) return showToast('No hay datos para exportar', 'error');
-      const headers = ['sal_id', 'descripcion_original', 'sustancia_local', 'forma_local', 'concentracion_local', 'precio', 'recetados', 'clave_cnis', 'descripcion_cnis', 'grupo_terapeutico', 'similitud_score', 'estado_mapeo'];
+      const headers = ['sal_id', 'descripcion_original', 'sustancia_local', 'forma_local', 'concentracion_local', 'precio', 'recetados', 'clave_cnis', 'descripcion_cnis_limpia', 'grupo_terapeutico', 'similitud_score', 'estado_mapeo'];
 
       let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<medicamentos>\n';
       allTMData.forEach(r => {
@@ -1621,7 +1621,7 @@
               <span>Precio: $${parseFloat(r.precio || 0).toFixed(2)}</span>
               <span class="score-badge ${scoreClass}">${r.similitud_score || 0}%</span>
             </div>
-            ${r.descripcion_cnis ? `<div style="margin-top:6px;font-size:12px;color:var(--text-muted)">Sugerencia: <span style="color:var(--cyan)">${r.clave_cnis}</span> — ${r.descripcion_cnis}</div>` : ''}
+            ${(r.descripcion_cnis_limpia || r.descripcion_cnis) ? `<div style="margin-top:6px;font-size:12px;color:var(--text-muted)">Sugerencia: <span style="color:var(--cyan)">${r.clave_cnis}</span> — ${(r.descripcion_cnis_limpia || r.descripcion_cnis)}</div>` : ''}
           </div>
           <div class="review-right" style="position:relative">
             <input type="text" placeholder="Buscar clave CNIS..." oninput="buscarCNIS(this, ${r.id_local})" onfocus="buscarCNIS(this, ${r.id_local})">
