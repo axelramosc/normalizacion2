@@ -427,7 +427,7 @@ async def _process_local_batch(sb, df, offset, batch_size, total_rows, clear_dat
     desc_col = next((c for c in df.columns if "descripcion" in c or "descrip" in c or "medicamento" in c), None)
     precio_col = next((c for c in df.columns if "precio" in c or "costo" in c or "monto" in c), None)
     recetados_col = next((c for c in df.columns if "recetado" in c or "cantidad" in c or "receta" in c), None)
-    presentacion_col = next((c for c in df.columns if "presentacion" in c), None)
+    presentacion_col = next((c for c in df.columns if "presentaci" in c or "envase" in c), None)
 
     if not desc_col:
         raise HTTPException(400, f"No se encontró columna de descripción. Columnas: {list(df.columns)}")
