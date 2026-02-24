@@ -443,6 +443,7 @@ async def _process_local_batch(sb, df, offset, batch_size, total_rows, clear_dat
 
     cnis_lookup = {r["descripcion_cnis_limpia"]: r for r in cnis_data}
     cnis_descriptions = list(cnis_lookup.keys())
+    cnis_substances_list = list(set([str(r["sustancia"]) for r in cnis_data if r.get("sustancia")]))
 
     # Get the batch
     batch_df = df.iloc[offset:offset + batch_size]
@@ -471,62 +472,82 @@ async def _process_local_batch(sb, df, offset, batch_size, total_rows, clear_dat
         score = 0
         estado = "pendiente"
 
-        exact_match = None
-        partial_match_70 = None
-        partial_match_40 = None
+        local_substance = parsed_local["sustancia"]
+        matched_cnis_substance = None
+        substance_fuzzy_score = 0
 
-        if parsed_local["sustancia"]:
-            for c_row in cnis_data:
-                if c_row["sustancia"] == parsed_local["sustancia"]:
-                    # Exact deterministic match
-                    if (c_row["concentracion"] == parsed_local["concentracion"] and 
-                        c_row["forma_farmaceutica"] == parsed_local["forma_farmaceutica"]):
-                        exact_match = c_row
-                        break
-                    
-                    if c_row["concentracion"] == parsed_local["concentracion"]:
-                        if not partial_match_70: partial_match_70 = c_row
-                    
-                    if not partial_match_40: partial_match_40 = c_row
-
-        if exact_match:
-            id_cnis = exact_match["id_cnis"]
-            score = 100
-            estado = "mapeado_seguro"
-            mapeado_seguro += 1
-        elif partial_match_70:
-            id_cnis = partial_match_70["id_cnis"]
-            score = 70
-            estado = "revision_manual"
-            revision_manual += 1
-        elif partial_match_40:
-            id_cnis = partial_match_40["id_cnis"]
-            score = 40
-            estado = "revision_manual"
-            revision_manual += 1
-        else:
-            # Fallback to Fuzzy match
-            best_match = process.extractOne(
-                desc_limpia,
-                cnis_descriptions,
-                scorer=fuzz.token_sort_ratio,
-            )
-            if best_match:
-                matched_desc, s_score = best_match[0], best_match[1]
-                if s_score >= SCORE_THRESHOLD:
-                    id_cnis = cnis_lookup[matched_desc]["id_cnis"]
-                    score = s_score
-                    estado = "mapeado_seguro"
-                    mapeado_seguro += 1
-                else:
-                    if s_score > 30:
-                        id_cnis = cnis_lookup[matched_desc]["id_cnis"]
-                        score = s_score
-                    estado = "revision_manual"
-                    revision_manual += 1
+        if local_substance:
+            # 1. First find the best substance match (Exact or Fuzzy on Substance Only)
+            if local_substance in cnis_substances_list:
+                matched_cnis_substance = local_substance
+                substance_fuzzy_score = 100
             else:
+                # Fuzzy match just the substance
+                best_sub = process.extractOne(local_substance, cnis_substances_list, scorer=fuzz.token_sort_ratio)
+                if best_sub and best_sub[1] >= 80:
+                    matched_cnis_substance = best_sub[0]
+                    substance_fuzzy_score = best_sub[1]
+
+        if matched_cnis_substance:
+            # We found a matching substance! Let's find the best specific medication row for this substance
+            candidate_rows = [r for r in cnis_data if r.get("sustancia") == matched_cnis_substance]
+            
+            best_candidate = None
+            best_score = -1
+            
+            for c_row in candidate_rows:
+                c_score = 0
+                
+                # Compare Concentration (Weight: 40 points)
+                if parsed_local["concentracion"] and c_row["concentracion"] == parsed_local["concentracion"]:
+                    c_score += 40
+                
+                # Compare Forma Farmaceutica (Weight: 40 points)
+                if parsed_local["forma_farmaceutica"] and c_row["forma_farmaceutica"] == parsed_local["forma_farmaceutica"]:
+                    c_score += 40
+                    
+                # Compare Presentacion (Weight: 20 points)
+                if parsed_local["presentacion"] and c_row["presentacion"] == parsed_local["presentacion"]:
+                    c_score += 20
+                
+                # Calculate final candidate score: 
+                # Combine base substance score (e.g. 100) and component bonus (0-100)
+                # If we have exact substance = 100. Component match gives bonuses.
+                # Example: Exact substance (100) + Exact Conc (40) + Exact Form (40) = Perfect match
+                # Let's average them out or use a weighted system
+                # Substance is 60% of the weight, components are 40%
+                total_match_score = (substance_fuzzy_score * 0.6) + (c_score * 0.4)
+                
+                if total_match_score > best_score:
+                    best_score = total_match_score
+                    best_candidate = c_row
+
+            # Apply thresholds based on best candidate score
+            id_cnis = best_candidate["id_cnis"]
+            score = int(best_score)
+            
+            if score >= 85:
+                estado = "mapeado_seguro"
+                mapeado_seguro += 1
+            elif score >= 50:
                 estado = "revision_manual"
                 revision_manual += 1
+            else:
+                estado = "revision_manual"  # Even if score < 50, we matched substance, so flag for manual
+                revision_manual += 1
+                
+        else:
+            # 2. No substance matched. Do a last resort fuzzy match on full description, but penalize heavily
+            best_fallback = process.extractOne(desc_limpia, cnis_descriptions, scorer=fuzz.token_sort_ratio)
+            if best_fallback and best_fallback[1] >= 85:
+                # We need extremely high certainty on fallback because they bypass substance normalization
+                matched_desc, s_score = best_fallback[0], best_fallback[1]
+                id_cnis = cnis_lookup[matched_desc]["id_cnis"]
+                score = s_score
+                estado = "revision_manual"  # Always set fallback matches to manual review to prevent silent bad matches
+                revision_manual += 1
+            else:
+                estado = "pendiente"
 
         records_to_insert.append({
             "sal_id": sal_id,
