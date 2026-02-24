@@ -1075,11 +1075,23 @@
                   </th>
                   <th onclick="sortTable('concentracion_local')" style="cursor:pointer"
                     title="Ordenar por Concentración">Concentración ↕️</th>
+                  <th onclick="sortTable('presentacion_local')" style="cursor:pointer" title="Ordenar por Presentación">
+                    Presentación ↕️</th>
                   <th onclick="sortTable('precio')" style="cursor:pointer" title="Ordenar por Precio">Precio ↕️</th>
                   <th onclick="sortTable('clave_cnis')" style="cursor:pointer" title="Ordenar por Clave CNIS">Clave CNIS
                     ↕️</th>
                   <th onclick="sortTable('descripcion_cnis_limpia')" style="cursor:pointer"
                     title="Ordenar por Descripción CNIS">Descripción CNIS ↕️</th>
+                  <th onclick="sortTable('sustancia_cnis')" style="cursor:pointer" title="Ordenar por Sustancia CNIS">
+                    Sust. CNIS ↕️</th>
+                  <th onclick="sortTable('forma_cnis')" style="cursor:pointer" title="Ordenar por Forma CNIS">
+                    Forma CNIS ↕️</th>
+                  <th onclick="sortTable('concentracion_cnis')" style="cursor:pointer"
+                    title="Ordenar por Concentración CNIS">
+                    Conc. CNIS ↕️</th>
+                  <th onclick="sortTable('presentacion_cnis')" style="cursor:pointer"
+                    title="Ordenar por Presentación CNIS">
+                    Pres. CNIS ↕️</th>
                   <th onclick="sortTable('grupo_terapeutico')" style="cursor:pointer"
                     title="Ordenar por Grupo Terapéutico">Grupo Terapéutico ↕️</th>
                   <th onclick="sortTable('similitud_score')" style="cursor:pointer" title="Ordenar por Match Score">
@@ -1451,7 +1463,7 @@
     function renderTablaMaestra(rows, groupBy) {
       const tbody = document.getElementById('tm-body');
       if (!rows.length) {
-        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text-muted)">No hay datos. Carga el CNIS y un catálogo local primero.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="16" style="text-align:center;padding:40px;color:var(--text-muted)">No hay datos. Carga el CNIS y un catálogo local primero.</td></tr>';
         return;
       }
 
@@ -1467,7 +1479,7 @@
         let html = '';
         Object.entries(groups).sort((a, b) => a[0].localeCompare(b[0])).forEach(([groupName, items]) => {
           const avgPrice = items.reduce((s, i) => s + (parseFloat(i.precio) || 0), 0) / items.length;
-          html += `<tr><td colspan="11"><div class="group-header" onclick="this.parentElement.parentElement.querySelectorAll('.group-row-${groupName.replace(/\W/g, '_')}').forEach(r=>r.style.display=r.style.display==='none'?'':'none')">
+          html += `<tr><td colspan="16"><div class="group-header" onclick="this.parentElement.parentElement.querySelectorAll('.group-row-${groupName.replace(/\W/g, '_')}').forEach(r=>r.style.display=r.style.display==='none'?'':'none')">
             <h4>📁 ${groupName}</h4>
             <span class="group-stats">${items.length} medicamentos · Precio promedio: $${avgPrice.toFixed(2)}</span>
           </div></td></tr>`;
@@ -1496,9 +1508,14 @@
         <td title="${r.sustancia_local || ''}">${(r.sustancia_local || '—').substring(0, 30)}${(r.sustancia_local || '').length > 30 ? '...' : ''}</td>
         <td>${r.forma_local || '—'}</td>
         <td style="font-weight:600; color:var(--text-primary);">${r.concentracion_local || '—'}</td>
+        <td>${r.presentacion_local || '—'}</td>
         <td>$${parseFloat(r.precio || 0).toFixed(2)}</td>
         <td style="font-weight:600">${claveLink}</td>
         <td title="${r.descripcion_cnis_limpia || r.descripcion_cnis || ''}">${(r.descripcion_cnis_limpia || r.descripcion_cnis || '—').substring(0, 30)}${(r.descripcion_cnis_limpia || r.descripcion_cnis || '').length > 30 ? '...' : ''}</td>
+        <td title="${r.sustancia_cnis || ''}">${(r.sustancia_cnis || '—').substring(0, 30)}${(r.sustancia_cnis || '').length > 30 ? '...' : ''}</td>
+        <td>${r.forma_cnis || '—'}</td>
+        <td style="font-weight:600; color:var(--text-primary);">${r.concentracion_cnis || '—'}</td>
+        <td>${r.presentacion_cnis || '—'}</td>
         <td title="${r.grupo_terapeutico || ''}">${(r.grupo_terapeutico || '—').substring(0, 30)}${(r.grupo_terapeutico || '').length > 30 ? '...' : ''}</td>
         <td><span class="score-badge ${scoreClass}">${r.similitud_score || 0}%</span></td>
         <td><span class="estado-badge ${estadoClass}">${r.estado_mapeo || '—'}</span></td>
@@ -1555,7 +1572,7 @@
 
     function exportCSV() {
       if (!allTMData.length) return showToast('No hay datos para exportar', 'error');
-      const headers = ['sal_id', 'descripcion_original', 'sustancia_local', 'forma_local', 'concentracion_local', 'precio', 'recetados', 'clave_cnis', 'descripcion_cnis_limpia', 'grupo_terapeutico', 'similitud_score', 'estado_mapeo'];
+      const headers = ['sal_id', 'descripcion_original', 'sustancia_local', 'forma_local', 'concentracion_local', 'presentacion_local', 'precio', 'recetados', 'clave_cnis', 'descripcion_cnis_limpia', 'sustancia_cnis', 'forma_cnis', 'concentracion_cnis', 'presentacion_cnis', 'grupo_terapeutico', 'similitud_score', 'estado_mapeo'];
       let csv = headers.join(',') + '\n';
       allTMData.forEach(r => {
         csv += headers.map(h => `"${(r[h] || '').toString().replace(/"/g, '""')}"`).join(',') + '\n';
@@ -1570,7 +1587,7 @@
 
     function exportXML() {
       if (!allTMData.length) return showToast('No hay datos para exportar', 'error');
-      const headers = ['sal_id', 'descripcion_original', 'sustancia_local', 'forma_local', 'concentracion_local', 'precio', 'recetados', 'clave_cnis', 'descripcion_cnis_limpia', 'grupo_terapeutico', 'similitud_score', 'estado_mapeo'];
+      const headers = ['sal_id', 'descripcion_original', 'sustancia_local', 'forma_local', 'concentracion_local', 'presentacion_local', 'precio', 'recetados', 'clave_cnis', 'descripcion_cnis_limpia', 'sustancia_cnis', 'forma_cnis', 'concentracion_cnis', 'presentacion_cnis', 'grupo_terapeutico', 'similitud_score', 'estado_mapeo'];
 
       let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<medicamentos>\n';
       allTMData.forEach(r => {

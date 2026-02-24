@@ -427,6 +427,7 @@ async def _process_local_batch(sb, df, offset, batch_size, total_rows, clear_dat
     desc_col = next((c for c in df.columns if "descripcion" in c or "descrip" in c or "medicamento" in c), None)
     precio_col = next((c for c in df.columns if "precio" in c or "costo" in c or "monto" in c), None)
     recetados_col = next((c for c in df.columns if "recetado" in c or "cantidad" in c or "receta" in c), None)
+    presentacion_col = next((c for c in df.columns if "presentacion" in c), None)
 
     if not desc_col:
         raise HTTPException(400, f"No se encontró columna de descripción. Columnas: {list(df.columns)}")
@@ -459,14 +460,16 @@ async def _process_local_batch(sb, df, offset, batch_size, total_rows, clear_dat
         desc_limpia = limpiar_descripcion(desc_sucia)
         sal_id = str(row.get(sal_col, "")) if sal_col else None
         
-        # Parse local description - should be using desc_sucia to capture context, but normalization processes it cleanly anyway
+        # Parse local description
         parsed_local = normalize_medication(desc_sucia)
+        if presentacion_col and pd.notna(row.get(presentacion_col)):
+            explicit_pres = str(row.get(presentacion_col, "")).strip()
+            if explicit_pres:
+                parsed_local["presentacion"] = explicit_pres
+
         sal_id = str(row.get(sal_col, "")) if sal_col else None
         precio = float(row[precio_col]) if precio_col and pd.notna(row.get(precio_col)) else None
         recetados = int(row[recetados_col]) if recetados_col and pd.notna(row.get(recetados_col)) else None
-
-        # Parse local description
-        parsed_local = normalize_medication(desc_sucia)
 
         id_cnis = None
         score = 0
