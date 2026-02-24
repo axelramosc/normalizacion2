@@ -436,9 +436,24 @@ async def _process_local_batch(sb, df, offset, batch_size, total_rows, clear_dat
     if clear_data:
         sb.table("local_catalogo").delete().neq("id_local", 0).execute()
 
-    # Fetch CNIS catalog for matching
-    cnis_resp = sb.table("cnis_catalogo").select("id_cnis, clave_cnis, descripcion_cnis_limpia, sustancia, forma_farmaceutica, concentracion, presentacion").execute()
-    cnis_data = cnis_resp.data
+    # Fetch ALL CNIS catalog for matching via pagination
+    cnis_data = []
+    page_size = 1000
+    start = 0
+    while True:
+        resp = sb.table("cnis_catalogo").select(
+            "id_cnis, clave_cnis, descripcion_cnis_limpia, sustancia, forma_farmaceutica, concentracion, presentacion"
+        ).range(start, start + page_size - 1).execute()
+        
+        if not resp.data:
+            break
+            
+        cnis_data.extend(resp.data)
+        if len(resp.data) < page_size:
+            break
+            
+        start += page_size
+
     if not cnis_data:
         raise HTTPException(400, "El catálogo CNIS está vacío. Carga primero el CNIS.")
 
