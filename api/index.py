@@ -369,8 +369,11 @@ async def _process_cnis_batch(sb, df, offset, batch_size, total_rows, clear_data
         hint = row.get("sustancia_hint")
         parsed = normalize_medication(desc, substance_hint=str(hint) if pd.notna(hint) else None)
         
+        # Guardar como normalizada aplicando la misma limpieza inicial (minúsculas, sin acentos/comas, etc)
+        desc_limpia = limpiar_descripcion(desc)
+        
         parsed_records.append({
-            "descripcion_cnis_limpia": desc,
+            "descripcion_cnis_limpia": desc_limpia,
             "sustancia": parsed["sustancia"],
             "forma_farmaceutica": parsed["forma_farmaceutica"],
             "concentracion": parsed["concentracion"],
@@ -453,6 +456,10 @@ async def _process_local_batch(sb, df, offset, batch_size, total_rows, clear_dat
     for _, row in batch_df.iterrows():
         desc_sucia = str(row.get(desc_col, ""))
         desc_limpia = limpiar_descripcion(desc_sucia)
+        sal_id = str(row.get(sal_col, "")) if sal_col else None
+        
+        # Parse local description - should be using desc_sucia to capture context, but normalization processes it cleanly anyway
+        parsed_local = normalize_medication(desc_sucia)
         sal_id = str(row.get(sal_col, "")) if sal_col else None
         precio = float(row[precio_col]) if precio_col and pd.notna(row.get(precio_col)) else None
         recetados = int(row[recetados_col]) if recetados_col and pd.notna(row.get(recetados_col)) else None
