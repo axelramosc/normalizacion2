@@ -146,16 +146,20 @@ def normalize_medication(description: str, substance_hint: str = None) -> dict:
     # 4. Limpieza final de la sustancia (Lo sobrante es la sustancia activa)
     # Removemos preposiciones huérfanas o basura residual
     text = re.sub(r"\b(caja|envase|con|para)\b", "", text)
+    text = re.sub(r"[,\.\-]+(?=\s|$)", " ", text) # remove punctuation at end of words
+    text = re.sub(r"^\s*[,\.\-]+", " ", text) # remove punctuation at start
     text = _RE_SPACES.sub(" ", text).strip()
 
     # Si nos dieron la sustancia_hint explícita, priorizamos limpiarla
     if substance_hint and not pd.isna(substance_hint):
-        result["sustancia"] = limpiar_descripcion(substance_hint)
+        result["sustancia"] = re.sub(r"[,\.\-]+(?=\s|$)", " ", limpiar_descripcion(substance_hint)).strip()
     else:
         # Si no hay hint, usamos el contenido depurado
         if text:
             # Quitamos prefijos como "contiene "
             text = re.sub(r"^contiene\b", "", text).strip()
+            # Quitamos comas y puntos finales perdidos
+            text = text.replace(" .", "").replace(" ,", "").replace(".", "").replace(",", "").strip()
             result["sustancia"] = text
             
     return result
