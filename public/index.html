@@ -913,16 +913,7 @@
           </div>
         </div>
 
-        <!-- Archivos en Storage (Local) -->
-        <div class="glass-card" style="margin-top: 20px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
-            <h3 style="margin:0; color:var(--text-primary); font-size:16px;">📁 Archivos en Storage (Local)</h3>
-            <button class="btn btn-secondary btn-sm" onclick="loadStorageFiles('local')">🔄 Refrescar</button>
-          </div>
-          <div id="local-storage-list" style="color: var(--text-muted); font-size: 13px;">
-            Cargando...
-          </div>
-        </div>
+
 
         <div class="stats-grid" id="cnis-stats">
           <div class="stat-card">
@@ -990,8 +981,19 @@
           <div style="margin-top:24px; text-align:center">
             <button class="btn btn-primary" id="btn-procesar" onclick="procesarLocal()" disabled
               style="padding:14px 40px;font-size:16px">
-              🔗 Procesar y Emparejar con CNIS
+              🔗 Normalizar y Emparejar
             </button>
+          </div>
+        </div>
+
+        <!-- Archivos en Storage (Local) -->
+        <div class="glass-card" style="margin-top: 20px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
+            <h3 style="margin:0; color:var(--text-primary); font-size:16px;">📁 Archivos en Storage (Local)</h3>
+            <button class="btn btn-secondary btn-sm" onclick="loadStorageFiles('local')">🔄 Refrescar</button>
+          </div>
+          <div id="local-storage-list" style="color: var(--text-muted); font-size: 13px;">
+            Cargando...
           </div>
         </div>
 
@@ -1123,6 +1125,19 @@
       </section>
 
     </main>
+  </div>
+
+  <!-- Reprocess Custom Modal -->
+  <div id="modal-reprocess-overlay"
+    style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9999; justify-content:center; align-items:center; backdrop-filter:blur(4px);">
+    <div class="glass-card" style="max-width:400px; width:90%; position:relative;">
+      <h3 style="margin-top:0">⚙️ Normalizar Catálogo</h3>
+      <p id="reprocess-modal-text" style="color:var(--text-muted); font-size:14px; line-height:1.5;"></p>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:24px;">
+        <button class="btn btn-secondary" onclick="closeReprocessModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="confirmReprocess()">Normalizar y Reemplazar</button>
+      </div>
+    </div>
   </div>
 
   <!-- Toast -->
@@ -1745,8 +1760,31 @@
       }
     }
 
-    async function reprocessFromStorage(filePath, type) {
-      if (!confirm(`¿Re-procesar "${filePath}"? Esto limpiará los datos anteriores de ${type === 'cnis' ? 'CNIS' : 'Local'} y reprocesará.`)) return;
+    // ---- Variables globales para el Modal de Reprocesamiento ----
+    let currentReprocessPath = null;
+    let currentReprocessType = null;
+
+    function reprocessFromStorage(filePath, type) {
+      currentReprocessPath = filePath;
+      currentReprocessType = type;
+
+      const typeLabel = type === 'cnis' ? 'CNIS' : 'Local';
+      document.getElementById('reprocess-modal-text').innerHTML = `¿Estás seguro de re-procesar <b>${filePath}</b>?<br><br>Esto limpiará los datos anteriores del catálogo ${typeLabel} y lo volverá a procesar desde Storage.`;
+      document.getElementById('modal-reprocess-overlay').style.display = 'flex';
+    }
+
+    function closeReprocessModal() {
+      document.getElementById('modal-reprocess-overlay').style.display = 'none';
+      currentReprocessPath = null;
+      currentReprocessType = null;
+    }
+
+    async function confirmReprocess() {
+      const filePath = currentReprocessPath;
+      const type = currentReprocessType;
+
+      if (!filePath || !type) return;
+      closeReprocessModal();
 
       const progressId = type === 'cnis' ? 'cnis' : 'local';
       const progress = document.getElementById(`${progressId}-progress`);
@@ -1757,6 +1795,8 @@
         let offset = 0;
         const batchSize = 200;
         let firstBatch = true;
+        let totalMapeados = 0;
+        let totalRevision = 0;
 
         while (true) {
           const batchForm = new FormData();
@@ -1774,6 +1814,9 @@
             break;
           }
           const batchData = await batchRes.json();
+          totalMapeados += batchData.mapeado_seguro || 0;
+          totalRevision += batchData.revision_manual || 0;
+
           if (fill) {
             const pct = Math.min(95, 10 + (batchData.processed / Math.max(1, batchData.total)) * 85);
             fill.style.width = pct + '%';
@@ -1782,6 +1825,15 @@
           if (batchData.status === 'complete' || batchData.remaining === 0) {
             if (fill) fill.style.width = '100%';
             showToast(`✅ Re-procesado: ${batchData.processed} registros (${type.toUpperCase()})`, 'success');
+
+            // Additional stat updates specifically for Local matching
+            if (type === 'local') {
+              document.getElementById('stat-local-total').textContent = batchData.processed;
+              document.getElementById('stat-local-mapeados').textContent = totalMapeados;
+              document.getElementById('stat-local-revision').textContent = totalRevision;
+              document.getElementById('stat-local-status').textContent = '✅ Cargado';
+            }
+
             loadStats();
             break;
           }
